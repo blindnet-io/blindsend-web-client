@@ -1,0 +1,13 @@
+{
+  "typescript.tsdk": "./node_modules/typescript/lib",
+  "prettier.printWidth": 120,
+  "prettier.semi": false,
+  "prettier.singleQuote": true,
+  "tslint.enable": true,
+  "editor.formatOnSave": true,
+  "files.watcherExclude": {
+    "**/.git/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  }
+}
