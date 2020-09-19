@@ -13,9 +13,12 @@ import {
   TransformStream,
   TransformStreamDefaultController
 } from "web-streams-polyfill/ponyfill"
+
 import * as streamAdapter from '@mattiasbuelens/web-streams-adapter'
 import { fromCodec } from '../helpers'
 import * as globals from '../globals'
+// @ts-ignore
+import fileUploadIcon from '../../images/file-upload.png';
 
 // @ts-ignore
 const toPolyfillReadable = streamAdapter.createReadableStreamWrapper(ReadableStream)
@@ -25,10 +28,9 @@ type UploadParams = {
   maxFileSize: number
 }
 
-type RequesteeKeys = {
+type CryptoData = {
   publicKey: Uint8Array,
-  masterKey: Uint8Array,
-  masterKeyHash: Uint8Array
+  masterKey: Uint8Array
 }
 
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
@@ -38,8 +40,8 @@ type FailSetFile = { type: 'FailSetFile', error: string }
 type FailUploadingFile = { type: 'FailUploadingFile', error: string }
 type SetFile = { type: 'SetFile', file: File }
 type GetRequesterKeys = { type: 'GetRequesterKeys' }
-type GotRequesterKeys = { type: 'GotRequesterKeys', pk1: string, uploadId: string }
-type GeneratedKeys = { type: 'GeneratedKeys', keys: RequesteeKeys }
+type GotRequesterKeys = { type: 'GotRequesterKeys', uploadId: string }
+type GeneratedKeys = { type: 'GeneratedKeys', cryptoData: CryptoData }
 type UploadedFile = { type: 'UploadedFile', streamEncHeader: Uint8Array }
 type SavedKeys = { type: 'SavedKeys' }
 
@@ -62,23 +64,23 @@ type Msg =
   | DragEnter
   | DragLeave
 
-type WithLinkId = { linkId: string }
+type WithLinkData = { linkId: string, pk1: Uint8Array }
 type WithUploadParams = { uploadParams: UploadParams }
 type WithFilePicker = { filePicker: { hovered: boolean } }
 type WithFile = { fileName: string, fileSize: number, file: File }
 type WithUploadId = { uploadId: string }
-type WithKeys = { keys: RequesteeKeys }
+type WithKeys = { keys: CryptoData }
 
 type PageError = { type: 'PageError' }
-type Initializing = { type: 'Initializing' } & WithLinkId
-type AwaitingFileUpload = { type: 'AwaitingFileUpload' } & WithLinkId & WithUploadParams & WithFilePicker
-type SettingFileFailed = { type: 'SettingFileFailed', error: string } & WithLinkId & WithUploadParams & WithFilePicker
-type UploadingFileFailed = { type: 'UploadingFileFailed', error: string } & WithLinkId & WithUploadParams & WithFile & WithFilePicker
-type FileSet = { type: 'FileSet' } & WithLinkId & WithUploadParams & WithFile & WithFilePicker
-type GettingRequesterKeys = { type: 'GettingRequesterKeys' } & WithLinkId & WithUploadParams & WithFile
-type GeneratingKeys = { type: 'GeneratingKeys', pk1: string } & WithLinkId & WithUploadParams & WithFile & WithUploadId
-type EncryptingAndUploadingFile = { type: 'EncryptingAndUploadingFile' } & WithLinkId & WithUploadParams & WithKeys & WithFile
-type SavingKeys = { type: 'SavingKeys' } & WithLinkId & WithUploadParams & WithKeys & WithFile
+type Initializing = { type: 'Initializing' } & WithLinkData
+type AwaitingFileUpload = { type: 'AwaitingFileUpload' } & WithLinkData & WithUploadParams & WithFilePicker
+type SettingFileFailed = { type: 'SettingFileFailed', error: string } & WithLinkData & WithUploadParams & WithFilePicker
+type UploadingFileFailed = { type: 'UploadingFileFailed', error: string } & WithLinkData & WithUploadParams & WithFile & WithFilePicker
+type FileSet = { type: 'FileSet' } & WithLinkData & WithUploadParams & WithFile & WithFilePicker
+type GettingRequesterKeys = { type: 'GettingRequesterKeys' } & WithLinkData & WithUploadParams & WithFile
+type GeneratingKeys = { type: 'GeneratingKeys' } & WithLinkData & WithUploadParams & WithFile & WithUploadId
+type EncryptingAndUploadingFile = { type: 'EncryptingAndUploadingFile' } & WithLinkData & WithUploadParams & WithKeys & WithFile
+type SavingKeys = { type: 'SavingKeys' } & WithLinkData & WithUploadParams & WithKeys & WithFile
 type Finished = { type: 'Finished' } & WithFile & WithUploadParams
 
 type Model =
@@ -107,7 +109,7 @@ function getUploadParams(): cmd.Cmd<Msg> {
     max_file_size: t.number,
   })
   const req = {
-    ...http.get(`${globals.endpoint}/get-upload-params`, fromCodec(schema)),
+    ...http.get(`${globals.endpoint}/request/get-upload-params`, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -122,15 +124,14 @@ function getUploadParams(): cmd.Cmd<Msg> {
   )(req)
 }
 
-function getRequesterKeys(linkId: String): cmd.Cmd<Msg> {
+function getUploadId(linkId: String): cmd.Cmd<Msg> {
 
-  type Resp = { pk1: string, upload_id: string }
+  type Resp = { upload_id: string }
   const schema = t.interface({
-    pk1: t.string,
     upload_id: t.string
   })
   const req = {
-    ...http.post(`${globals.endpoint}/cont-hs`, { link_id: linkId }, fromCodec(schema)),
+    ...http.post(`${globals.endpoint}/request/prepare-upload`, { link_id: linkId }, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -139,27 +140,25 @@ function getRequesterKeys(linkId: String): cmd.Cmd<Msg> {
       result,
       E.fold<http.HttpError, Resp, Msg>(
         _ => ({ type: 'FailUploadingFile', error: 'Uploading failed. Try again.' }),
-        res => ({ type: 'GotRequesterKeys', pk1: res.pk1, uploadId: res.upload_id })
+        res => ({ type: 'GotRequesterKeys', uploadId: res.upload_id })
       )
     )
   )(req)
 }
 
-function generateKeys(pk1: string): cmd.Cmd<Msg> {
+function generateKeys(pk1: Uint8Array): cmd.Cmd<Msg> {
 
-  function generate(): RequesteeKeys {
+  function generate(): CryptoData {
     const { publicKey, privateKey } = sodium.crypto_kx_keypair() // X25519, 2x 32 bytes
-    const { sharedTx: masterKey } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, sodium.from_hex(pk1))
+    const { sharedTx: masterKey } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, pk1)
 
-    const masterKeyHash = sodium.crypto_generichash(32, masterKey) // BLAKE2b
-
-    return { publicKey, masterKey, masterKeyHash }
+    return { publicKey, masterKey }
   }
 
   return pipe(
     task.of(generate()),
     perform(
-      keys => ({ type: 'GeneratedKeys', keys })
+      cryptoData => ({ type: 'GeneratedKeys', cryptoData })
     )
   )
 }
@@ -197,7 +196,6 @@ function encryptAndUploadFile(file: File, masterKey: Uint8Array, linkId: string,
             leftOverBytes = chunk.slice(start)
           }
         }
-
         loopPushBytes(0)
       },
       flush: (ctrl: TransformStreamDefaultController<Uint8Array>) => {
@@ -206,8 +204,8 @@ function encryptAndUploadFile(file: File, masterKey: Uint8Array, linkId: string,
     })
   }
 
-  function encryptTransformer(state: sodium.StateAddress): TransformStream<Uint8Array, Uint8Array> {
 
+  function encryptTransformer(state: sodium.StateAddress): TransformStream<Uint8Array, Uint8Array> {
     return new TransformStream<Uint8Array, Uint8Array>({
       transform: (chunk: Uint8Array, ctrl: TransformStreamDefaultController<Uint8Array>) => {
         const cypherText = sodium.crypto_secretstream_xchacha20poly1305_push(state, chunk, null, 0) // XChaCha20-Poly1305
@@ -219,7 +217,6 @@ function encryptAndUploadFile(file: File, masterKey: Uint8Array, linkId: string,
       }
     })
   }
-
 
   // @ts-ignore
   const mappedFileStream: ReadableStream<Uint8Array> =
@@ -249,7 +246,7 @@ function encryptAndUploadFile(file: File, masterKey: Uint8Array, linkId: string,
         }
       }))
       .then(
-        () => fetch(`${globals.endpoint}/send-file/${linkId}/${uploadId}`, {
+        () => fetch(`${globals.endpoint}/request/send-file/${linkId}/${uploadId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/octet-stream'
@@ -285,12 +282,11 @@ function encryptAndUploadFile(file: File, masterKey: Uint8Array, linkId: string,
   )
 }
 
-function saveKeys(linkId: string, fileName: string, fileSize: number, streamEncHeader: Uint8Array, keys: RequesteeKeys) {
-  const { publicKey, masterKeyHash } = keys
+function saveKeys(linkId: string, fileName: string, fileSize: number, streamEncHeader: Uint8Array, cryptoData: CryptoData) {
+
   const body = {
     link_id: linkId,
-    pk2: sodium.to_hex(publicKey),
-    key_hash: sodium.to_hex(masterKeyHash),
+    pk2: sodium.to_hex(cryptoData.publicKey),
     header: sodium.to_hex(streamEncHeader),
     file_name: fileName,
     file_size: fileSize
@@ -298,7 +294,7 @@ function saveKeys(linkId: string, fileName: string, fileSize: number, streamEncH
 
   const schema = t.any
   const req = {
-    ...http.post(`${globals.endpoint}/finish-hs`, body, fromCodec(schema)),
+    ...http.post(`${globals.endpoint}/request/finish-upload`, body, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -313,8 +309,8 @@ function saveKeys(linkId: string, fileName: string, fileSize: number, streamEncH
   )(req)
 }
 
-function init(linkId: string): [Model, cmd.Cmd<Msg>] {
-  const initModel: Model = { type: 'Initializing', linkId }
+function init(linkId: string, pk1: Uint8Array): [Model, cmd.Cmd<Msg>] {
+  const initModel: Model = { type: 'Initializing', linkId, pk1 }
 
   return [initModel, loadLibsoium()]
 }
@@ -335,7 +331,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       else return [{ type: 'PageError' }, cmd.none]
     }
     case 'FailSetFile': {
-      if (model.type != 'AwaitingFileUpload' && model.type != 'EncryptingAndUploadingFile') throw new Error("Wrong state")
+      if (model.type != 'AwaitingFileUpload' && model.type != 'FileSet' && model.type != 'UploadingFileFailed' && model.type != 'SettingFileFailed') throw new Error("Wrong state")
       else return [{ ...model, filePicker: { hovered: false }, type: 'SettingFileFailed', error: msg.error }, cmd.none]
     }
     case 'FailUploadingFile': {
@@ -344,19 +340,22 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'SetFile': {
       if (model.type != 'AwaitingFileUpload' && model.type != 'FileSet' && model.type != 'UploadingFileFailed' && model.type != 'SettingFileFailed') throw new Error("Wrong state")
-      else return [{ ...model, type: 'FileSet', fileName: msg.file.name, fileSize: msg.file.size, file: msg.file, filePicker: { hovered: false } }, cmd.none]
+      else return [
+        { ...model, type: 'FileSet', fileName: msg.file.name, fileSize: msg.file.size, file: msg.file, filePicker: { hovered: false } },
+        cmd.none
+      ]
     }
     case 'GetRequesterKeys': {
       if (model.type != 'FileSet' && model.type != 'UploadingFileFailed') throw new Error("Wrong state")
-      else return [{ ...model, type: 'GettingRequesterKeys' }, getRequesterKeys(model.linkId)]
+      else return [{ ...model, type: 'GettingRequesterKeys' }, getUploadId(model.linkId)]
     }
     case 'GotRequesterKeys': {
       if (model.type != 'GettingRequesterKeys') throw new Error("Wrong state")
-      else return [{ ...model, type: 'GeneratingKeys', pk1: msg.pk1, uploadId: msg.uploadId }, generateKeys(msg.pk1)]
+      return [{ ...model, type: 'GeneratingKeys', uploadId: msg.uploadId }, generateKeys(model.pk1)]
     }
     case 'GeneratedKeys': {
       if (model.type != 'GeneratingKeys') throw new Error("Wrong state")
-      else return [{ ...model, type: 'EncryptingAndUploadingFile', keys: msg.keys }, encryptAndUploadFile(model.file, msg.keys.masterKey, model.linkId, model.uploadId)]
+      else return [{ ...model, type: 'EncryptingAndUploadingFile', keys: msg.cryptoData }, encryptAndUploadFile(model.file, msg.cryptoData.masterKey, model.linkId, model.uploadId)]
     }
     case 'UploadedFile': {
       if (model.type != 'EncryptingAndUploadingFile') throw new Error("Wrong state")
@@ -368,11 +367,11 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
 
     case 'DragEnter': {
-      if (model.type != 'AwaitingFileUpload' && model.type != 'UploadingFileFailed' && model.type != 'FileSet') throw new Error("Wrong state")
+      if (model.type != 'AwaitingFileUpload' && model.type != 'UploadingFileFailed' && model.type != 'FileSet' && model.type != 'SettingFileFailed') throw new Error("Wrong state")
       else return [{ ...model, filePicker: { ...model.filePicker, hovered: true } }, cmd.none]
     }
     case 'DragLeave': {
-      if (model.type != 'AwaitingFileUpload' && model.type != 'UploadingFileFailed' && model.type != 'FileSet') throw new Error("Wrong state")
+      if (model.type != 'AwaitingFileUpload' && model.type != 'UploadingFileFailed' && model.type != 'FileSet' && model.type != 'SettingFileFailed') throw new Error("Wrong state")
       else return [{ ...model, filePicker: { ...model.filePicker, hovered: false } }, cmd.none]
     }
   }
@@ -383,7 +382,7 @@ function view(model: Model): Html<Msg> {
   return dispatch => {
 
     const renderError = () =>
-      <div className="alert alert-danger" role="alert" style={{ marginTop: '20px' }}>
+      <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
         Error, refresh page
       </div>
 
@@ -410,51 +409,57 @@ function view(model: Model): Html<Msg> {
       if (size < 1024) return `${size} B`
       else if (size < 1048576) return `${to2Decimals(size / 1024)} KB`
       else if (size < 1073741824) return `${to2Decimals(size / 1048576)} MB`
-      else return `{${to2Decimals(size / 1073741824)}} GB`
+      else return `${to2Decimals(size / 1073741824)} GB`
     }
 
     const renderAwaitingFileUpload = (uploadParams: UploadParams) => {
 
-      const filePickEnabled = model.type == 'AwaitingFileUpload' || model.type == 'UploadingFileFailed' || model.type == 'FileSet' || model.type == 'SettingFileFailed'
+      const filePickEnabled =
+        model.type == 'AwaitingFileUpload' || model.type == 'UploadingFileFailed' ||
+        model.type == 'FileSet' || model.type == 'SettingFileFailed'
       return (
         <div
-          style={{
-            border: ('filePicker' in model) && model.filePicker.hovered ? '6px dashed purple' : '6px dashed #ccc',
-            borderRadius: '20px',
-            width: '480px',
-            height: '200px',
-            margin: '100px auto',
-            marginTop: model.type == 'UploadingFileFailed' || model.type == 'Finished' ? '30px' : '50px',
-            marginBottom: '30px',
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
+          className="upload-wrap"
+          style={('filePicker' in model) && model.filePicker.hovered ? {
+            border: "3px dashed gray",
+            background: "linear-gradient(#ddd, #eee) padding-box, linear-gradient(to right, #34a5d7, #9175b4) border-box"
+          } : {}}
           onDragEnter={e => { e.preventDefault(); if (filePickEnabled) dispatch({ type: 'DragEnter' }) }}
           onDragOver={e => { e.preventDefault(); if (filePickEnabled) dispatch({ type: 'DragEnter' }) }}
           onDragLeave={e => { e.preventDefault(); if (filePickEnabled) dispatch({ type: 'DragLeave' }) }}
-          onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files, uploadParams.maxFileSize) }}
+          onDrop={e => { e.preventDefault(); if (filePickEnabled) handleFiles(e.dataTransfer.files, uploadParams.maxFileSize) }}
         >
-          <div style={{ textAlign: "center", margin: '10px' }}>
-            <button
-              disabled={!filePickEnabled}
-              type="button"
-              className="btn btn-secondary"
-              onClick={e => {
-                e.preventDefault()
-                document.getElementById('file-pick')?.click()
-              }}>
-              Select file
-            </button>
+          <div className="row m-0">
+
+            <div className="col-lg-10 offset-lg-1 text-center">
+              <div className="file-icon">
+                <img src={fileUploadIcon} className="img-fluid" />
+              </div>
+              <div className="bs-form text-center">
+
+                <form>
+                  <div className={filePickEnabled ? "form-group uploadfield" : "form-group uploadfield-disabled"}>
+                    <label
+                      className="uploadfield-label"
+                      onClick={e => {
+                        e.preventDefault()
+                        if (filePickEnabled) document.getElementById('file-pick')?.click()
+                      }}> Select File </label>
+                  </div>
+                  <div className="">
+                    {(
+                      'file' in model
+                        ? <div>File <span style={{ color: 'grey' }}>{model.file.name} ({getSizeLabel(model.file.size)})</span> set.</div>
+                        : <div>Or drag & drop file here (max {getSizeLabel(uploadParams.maxFileSize)}).</div>
+                    )}
+                  </div>
+                </form>
+
+              </div>
+
+            </div>
+            <input hidden type='file' id='file-pick' onChange={e => handleFiles(e.target.files, uploadParams.maxFileSize)} />
           </div>
-          {(
-            'file' in model
-              ? <div>File <span style={{ color: 'grey' }}>{model.file.name} ({getSizeLabel(model.file.size)})</span> set.</div>
-              : <div>Or drag & drop file here (max {getSizeLabel(uploadParams.maxFileSize)}).</div>
-          )}
-          <input hidden type='file' id='file-pick' onChange={e => handleFiles(e.target.files, uploadParams.maxFileSize)} />
         </div>
       )
     }
@@ -463,14 +468,17 @@ function view(model: Model): Html<Msg> {
       return (
         <div>
           {renderAwaitingFileUpload(uploadParams)}
-          <div style={{ textAlign: "center", margin: '10px' }}>
-            <button
-              disabled={model.type != 'FileSet' && model.type != 'UploadingFileFailed'}
-              type="button"
-              className="btn btn-primary"
-              onClick={_ => dispatch({ type: 'GetRequesterKeys' })}>
-              Send file
-            </button>
+          <div className="upload-btn-wrap">
+
+            <div className="bs-form">
+              <input
+                type="button"
+                className="form-control btn bs-btn"
+                disabled={model.type != 'FileSet' && model.type != 'UploadingFileFailed'}
+                value="Upload file"
+                onClick={_ => dispatch({ type: 'GetRequesterKeys' })}
+              />
+            </div>
           </div>
         </div>
       )
@@ -479,7 +487,7 @@ function view(model: Model): Html<Msg> {
     function renderUploadingFileFailed(error: string, uploadParams: UploadParams) {
       return (
         <div>
-          <div className="alert alert-danger" role="alert" style={{ marginTop: '20px' }}>
+          <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
             {error}
           </div>
           {renderFileSet(uploadParams)}
@@ -490,7 +498,7 @@ function view(model: Model): Html<Msg> {
     function renderSettingFileFailed(error: string, uploadParams: UploadParams) {
       return (
         <div>
-          <div className="alert alert-danger" role="alert" style={{ marginTop: '20px' }}>
+          <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
             {error}
           </div>
           {renderAwaitingFileUpload(uploadParams)}
@@ -499,10 +507,29 @@ function view(model: Model): Html<Msg> {
     }
 
     function renderFileUploading(uploadParams: UploadParams) {
+      const percentage =
+        model.type === 'EncryptingAndUploadingFile'
+          ? 0
+          : model.type === 'SavingKeys'
+            ? 100
+            : 0
+
       return (
         <div>
-          <div className="alert alert-info" role="alert" style={{ marginTop: '20px' }}>
+          <div className="alert alert-info" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
             Encrypting and uploading file. Please leave the window open until the upload is finished.
+          </div>
+          <div className="progress">
+            <div
+              className="progress-bar progress-bar-striped progress-bar-animated"
+              role="progressbar"
+              style={{ width: `${percentage}%` }}
+              aria-valuenow={percentage}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              {percentage}%
+          </div>
           </div>
           {renderFileSet(uploadParams)}
           <div style={{ textAlign: 'center', margin: '10px' }}>
@@ -515,14 +542,27 @@ function view(model: Model): Html<Msg> {
     function renderFileUploaded(uploadParams: UploadParams) {
       return (
         <div>
-          <div className="alert alert-success" role="alert" style={{ marginTop: '20px' }}>
+          <div className="alert alert-success" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
             File uploaded successfully.
+          </div>
+          <div className="progress">
+            <div
+              className="progress-bar progress-bar-striped"
+              role="progressbar"
+              style={{ width: '100%' }}
+              aria-valuenow={100}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              100%
+            </div>
           </div>
           {renderFileSet(uploadParams)}
         </div>
       )
     }
 
+    // @ts-ignore
     function render() {
       switch (model.type) {
         case 'PageError': return renderError()
@@ -540,6 +580,7 @@ function view(model: Model): Html<Msg> {
     }
 
     return render()
+
   }
 }
 

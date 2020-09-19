@@ -17,6 +17,8 @@ import * as streamAdapter from '@mattiasbuelens/web-streams-adapter'
 import * as streamSaver from 'streamsaver'
 import { fromCodec } from '../helpers'
 import * as globals from '../globals'
+// @ts-ignore
+import fileDownloadIcon from '../../images/file-download.png';
 
 // @ts-ignore
 streamSaver.WritableStream = WritableStream
@@ -30,38 +32,23 @@ const toPolyfillReadable = streamAdapter.createReadableStreamWrapper(ReadableStr
 const toPolyfillWritable = streamAdapter.createWritableStreamWrapper(WritableStream)
 const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(TransformStream)
 
-type KeysResponse = {
-  link_id: string,
-  public_key_1: string,
-  secret_key_encryption_nonce: string,
-  encrypted_secret_key: string,
-  kdf_salt: string,
-  kdf_ops: number,
-  kdf_memory_limit: number,
-  public_key_2: string,
-  stream_enc_header: string
-}
-
-type Keys = {
-  pk1: string,
-  skEncNonce: string,
-  skEnc: string,
-  kdfSalt: string,
+type CryptoData = {
+  kdfSalt: Uint8Array,
   kdfOps: number,
   kdfMemLimit: number,
-  pk2: string,
-  streamEncHeader: string,
+  pk2: Uint8Array,
+  streamEncHeader: Uint8Array,
 }
 
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
 type FailGetFileMetadata = { type: 'FailGetFileMetadata' }
 type GotFileMetadata = { type: 'GotFileMetadata', fileName: string, fileSize: number }
 type FailGetKeys = { type: 'FailGetKeys' }
-type GotKeys = { type: 'GotKeys', resp: KeysResponse }
+type GotKeys = { type: 'GotKeys', cryptoData: CryptoData }
 type TypePass = { type: 'TypePass', pass: string }
 type GetFile = { type: 'GetFile' }
 type FailGetFile = { type: 'FailGetFile' }
-type GotFile = { type: 'GotFile', encFileContent: ReadableStream<Uint8Array>, derivedKey: Uint8Array }
+type GotFile = { type: 'GotFile', encFileContent: ReadableStream<Uint8Array> }
 type FailDecryptFile = { type: 'FailDecryptFile' }
 type Finish = { type: 'Finish' }
 
@@ -78,22 +65,21 @@ type Msg =
   | FailDecryptFile
   | Finish
 
-type WithLinkId = { linkId: string }
+type WithLinkData = { linkId: string, pk1: Uint8Array }
 type WithPass = { pass: string }
 type WithFileMetadata = { fileName: string, fileSize: number }
-type WithKeys = { keys: Keys }
+type WithCryptoData = { cryptoData: CryptoData }
 
 type PageError = { type: 'PageError' }
-type Initializing = { type: 'Initializing' } & WithLinkId
-type GettingFileMetadata = { type: 'GettingFileMetadata' } & WithLinkId
-type GettingKeys = { type: 'GettingKeys' } & WithLinkId & WithFileMetadata
-type GettingKeysFailed = { type: 'GettingKeysFailed' } & WithLinkId & WithFileMetadata
-type AwaitingPassSubmit = { type: 'AwaitingPassSubmit' } & WithLinkId & WithPass & WithKeys & WithFileMetadata
-type GettingFile = { type: 'GettingFile' } & WithLinkId & WithPass & WithKeys & WithFileMetadata
-type GettingFileFailed = { type: 'GettingFileFailed' } & WithLinkId & WithPass & WithKeys & WithFileMetadata
-type DecryptingFile = { type: 'DecryptingFile', encFileContent: ReadableStream<Uint8Array> } & WithLinkId & WithPass & WithKeys & WithFileMetadata
-type DecryptingFileFailed = { type: 'DecryptingFileFailed', encFileContent: ReadableStream<Uint8Array> } & WithLinkId & WithPass & WithKeys & WithFileMetadata
-type Finished = { type: 'Finished' } & WithLinkId & WithPass & WithKeys & WithFileMetadata
+type Initializing = { type: 'Initializing' } & WithLinkData
+type GettingFileMetadata = { type: 'GettingFileMetadata' } & WithLinkData
+type GettingKeys = { type: 'GettingKeys' } & WithLinkData & WithFileMetadata
+type GettingKeysFailed = { type: 'GettingKeysFailed' } & WithLinkData & WithFileMetadata
+type AwaitingPassSubmit = { type: 'AwaitingPassSubmit' } & WithLinkData & WithPass & WithCryptoData & WithFileMetadata
+type GettingFile = { type: 'GettingFile', sk: Uint8Array } & WithLinkData & WithPass & WithCryptoData & WithFileMetadata
+type DecryptingFile = { type: 'DecryptingFile', encFileContent: ReadableStream<Uint8Array> } & WithLinkData & WithPass & WithCryptoData & WithFileMetadata
+type GettingFileFailed = { type: 'GettingFileFailed', error: string } & WithLinkData & WithPass & WithCryptoData & WithFileMetadata
+type Finished = { type: 'Finished' } & WithLinkData & WithPass & WithCryptoData & WithFileMetadata
 
 type Model =
   | PageError
@@ -103,9 +89,8 @@ type Model =
   | GettingFileMetadata
   | GettingKeysFailed
   | GettingFile
-  | GettingFileFailed
   | DecryptingFile
-  | DecryptingFileFailed
+  | GettingFileFailed
   | Finished
 
 function loadLibsoium(): cmd.Cmd<Msg> {
@@ -128,7 +113,7 @@ function getFileMetadata(linkId: String): cmd.Cmd<Msg> {
     file_size: t.number
   })
   const req = {
-    ...http.post(`${globals.endpoint}/get-file-metadata`, { link_id: linkId }, fromCodec(schema)),
+    ...http.post(`${globals.endpoint}/request/get-file-metadata`, { link_id: linkId }, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -145,11 +130,17 @@ function getFileMetadata(linkId: String): cmd.Cmd<Msg> {
 
 function getKeys(linkId: String): cmd.Cmd<Msg> {
 
+  type KeysResponse = {
+    link_id: string,
+    kdf_salt: string,
+    kdf_ops: number,
+    kdf_memory_limit: number,
+    public_key_2: string,
+    stream_enc_header: string
+  }
+
   const schema = t.interface({
     link_id: t.string,
-    public_key_1: t.string,
-    secret_key_encryption_nonce: t.string,
-    encrypted_secret_key: t.string,
     kdf_salt: t.string,
     kdf_ops: t.number,
     kdf_memory_limit: t.number,
@@ -157,30 +148,40 @@ function getKeys(linkId: String): cmd.Cmd<Msg> {
     stream_enc_header: t.string,
   })
   const req = {
-    ...http.post(`${globals.endpoint}/get-keys`, { link_id: linkId }, fromCodec(schema)),
+    ...http.post(`${globals.endpoint}/request/get-keys`, { link_id: linkId }, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
+  // TODO: handle failed conversions
   return http.send<KeysResponse, Msg>(result =>
     pipe(
       result,
       E.fold<http.HttpError, KeysResponse, Msg>(
         _ => ({ type: 'FailGetKeys' }),
-        resp => ({ type: 'GotKeys', resp })
+        resp => ({
+          type: 'GotKeys',
+          cryptoData: {
+            kdfSalt: sodium.from_hex(resp.kdf_salt),
+            kdfOps: resp.kdf_ops,
+            kdfMemLimit: resp.kdf_memory_limit,
+            pk2: sodium.from_hex(resp.public_key_2),
+            streamEncHeader: sodium.from_hex(resp.stream_enc_header)
+          }
+        })
       )
     )
   )(req)
 }
 
-function getFile(linkId: string, keyHash: string, derivedKey: Uint8Array): cmd.Cmd<Msg> {
+function getFile(linkId: string): cmd.Cmd<Msg> {
 
   const reqTask: Task<E.Either<string, ReadableStream<Uint8Array>>> = () =>
-    fetch(`${globals.endpoint}/get-file`, {
+    fetch(`${globals.endpoint}/request/get-file`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: `{ "link_id": "${linkId}", "key_hash": "${keyHash}" }`
+      body: `{ "link_id": "${linkId}" }`
     })
       .then(resp => {
         if (resp.status === 200 && resp.body != null) {
@@ -199,13 +200,13 @@ function getFile(linkId: string, keyHash: string, derivedKey: Uint8Array): cmd.C
     perform(encFileContent =>
       E.fold<string, ReadableStream<Uint8Array>, Msg>(
         _ => ({ type: 'FailGetFile' }),
-        encFileContent => ({ type: 'GotFile', encFileContent, derivedKey })
+        encFileContent => ({ type: 'GotFile', encFileContent })
       )(encFileContent)
     )
   )
 }
 
-function decryptFile(encFileContent: ReadableStream<Uint8Array>, keys: Keys, derivedKey: Uint8Array, fileName: string, fileSize: number): cmd.Cmd<Msg> {
+function decryptFile(encFileContent: ReadableStream<Uint8Array>, cryptoData: CryptoData, pk: Uint8Array, sk: Uint8Array, fileName: string, fileSize: number): cmd.Cmd<Msg> {
 
   function toFixedChunkSizesTransformer(desiredChunkSize: number): TransformStream<Uint8Array, Uint8Array> {
 
@@ -274,6 +275,7 @@ function decryptFile(encFileContent: ReadableStream<Uint8Array>, keys: Keys, der
         if (loaded > partSize * percentage) {
           const updatePercentage = Math.floor((loaded - partSize * percentage) / partSize)
           percentage = percentage + updatePercentage
+          // console.log(percentage)
           updateProgressBar(percentage)
         }
 
@@ -291,10 +293,9 @@ function decryptFile(encFileContent: ReadableStream<Uint8Array>, keys: Keys, der
       readableStrategy: undefined
     }))
 
-  const sk1 = sodium.crypto_secretbox_open_easy(sodium.from_hex(keys.skEnc), sodium.from_hex(keys.skEncNonce), derivedKey) // XSalsa20-Poly1305
-  const { sharedRx: masterKey } = sodium.crypto_kx_server_session_keys(sodium.from_hex(keys.pk1), sk1, sodium.from_hex(keys.pk2))
+  const { sharedRx: masterKey } = sodium.crypto_kx_server_session_keys(pk, sk, cryptoData.pk2)
 
-  const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(sodium.from_hex(keys.streamEncHeader), masterKey) // XChaCha20-Poly1305
+  const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(cryptoData.streamEncHeader, masterKey) // XChaCha20-Poly1305
 
   // @ts-ignore
   const mappedEncFileContent: ReadableStream<Uint8Array> =
@@ -334,8 +335,8 @@ function decryptFile(encFileContent: ReadableStream<Uint8Array>, keys: Keys, der
   )
 }
 
-function init(linkId: string): [Model, cmd.Cmd<Msg>] {
-  const initModel: Model = { type: 'Initializing', linkId }
+function init(linkId: string, pk1: Uint8Array): [Model, cmd.Cmd<Msg>] {
+  const initModel: Model = { type: 'Initializing', linkId, pk1 }
 
   return [initModel, loadLibsoium()]
 }
@@ -361,20 +362,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'GotKeys': {
       if (model.type != 'GettingKeys') throw new Error("Wrong state")
-      else {
-        const keys = {
-          pk1: msg.resp.public_key_1,
-          skEncNonce: msg.resp.secret_key_encryption_nonce,
-          skEnc: msg.resp.encrypted_secret_key,
-          kdfSalt: msg.resp.kdf_salt,
-          kdfOps: msg.resp.kdf_ops,
-          kdfMemLimit: msg.resp.kdf_memory_limit,
-          pk2: msg.resp.public_key_2,
-          streamEncHeader: msg.resp.stream_enc_header
-        }
-
-        return [{ ...model, type: 'AwaitingPassSubmit', keys, pass: '' }, cmd.none]
-      }
+      else return [{ ...model, type: 'AwaitingPassSubmit', cryptoData: msg.cryptoData, pass: '' }, cmd.none]
     }
     case 'TypePass': {
       if (model.type != 'AwaitingPassSubmit' && model.type != 'GettingFileFailed') throw new Error("Wrong state")
@@ -383,31 +371,37 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     case 'GetFile': {
       if (model.type != 'AwaitingPassSubmit' && model.type != 'GettingFileFailed') throw new Error("Wrong state")
       else {
-
-        const derivedKey = sodium.crypto_pwhash(
-          sodium.crypto_secretbox_KEYBYTES,
+        const keyPairSeed = sodium.crypto_pwhash(
+          sodium.crypto_kx_SEEDBYTES,
           model.pass,
-          sodium.from_hex(model.keys.kdfSalt),
-          model.keys.kdfOps,
-          model.keys.kdfMemLimit,
+          model.cryptoData.kdfSalt,
+          model.cryptoData.kdfOps,
+          model.cryptoData.kdfMemLimit,
           sodium.crypto_pwhash_ALG_DEFAULT
-        )
-        const keyHash = sodium.crypto_generichash(32, derivedKey)
+        ) // Argon2id, 32 bytes
 
-        return [{ ...model, type: 'GettingFile' }, getFile(model.linkId, sodium.to_hex(keyHash), derivedKey)]
+        const { publicKey: pk, privateKey: sk } = sodium.crypto_kx_seed_keypair(keyPairSeed) // X25519, 2x 32 bytes
+
+        switch (sodium.compare(pk, model.pk1)) {
+          case 0: return [{ ...model, type: 'GettingFile', sk }, getFile(model.linkId)]
+          default: return [{ ...model, type: 'GettingFileFailed', error: 'Wrong password provided' }, cmd.none]
+        }
       }
     }
     case 'FailGetFile': {
       if (model.type != 'GettingFile') throw new Error("Wrong state")
-      else return [{ ...model, type: 'GettingFileFailed' }, cmd.none]
+      else return [{ ...model, type: 'GettingFileFailed', error: 'Error getting file, try again' }, cmd.none]
     }
     case 'GotFile': {
       if (model.type != 'GettingFile') throw new Error("Wrong state")
-      else return [{ ...model, type: 'DecryptingFile', encFileContent: msg.encFileContent }, decryptFile(msg.encFileContent, model.keys, msg.derivedKey, model.fileName, model.fileSize)]
+      else return [
+        { ...model, type: 'DecryptingFile', encFileContent: msg.encFileContent },
+        decryptFile(msg.encFileContent, model.cryptoData, model.pk1, model.sk, model.fileName, model.fileSize)
+      ]
     }
     case 'FailDecryptFile': {
       if (model.type != 'DecryptingFile') throw new Error("Wrong state")
-      else return [{ ...model, type: 'GettingFileFailed' }, cmd.none]
+      else return [{ ...model, type: 'GettingFileFailed', error: 'Error decrypting file, try again' }, cmd.none]
     }
     case 'Finish': {
       if (model.type != 'DecryptingFile') throw new Error("Wrong state")
@@ -424,9 +418,9 @@ function updateProgressBar(i: number) {
       `<div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: ${i}%;" aria-valuenow="${i}" aria-valuemin="0" aria-valuemax="100">${i}%</div>`
 }
 function clearProgressBar() {
-  const elem = document.getElementById('progress-hack')
-  if (elem !== null)
-    elem.remove()
+  // const elem = document.getElementById('progress-hack')
+  // if (elem !== null)
+  //   elem.remove()
 }
 
 function view(model: Model): Html<Msg> {
@@ -434,7 +428,7 @@ function view(model: Model): Html<Msg> {
   return dispatch => {
 
     const renderError = () =>
-      <div className="alert alert-danger" role="alert" style={{ marginTop: '20px' }}>
+      <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
         Error, refresh page
       </div>
 
@@ -454,81 +448,74 @@ function view(model: Model): Html<Msg> {
       else return `${to2Decimals(size / 1073741824)} GB`
     }
 
-    const renderDescription = (fileName: string, fileSize: number) =>
-      <div className="row">
-        <div className="col-2" />
-        <div className="col-8" style={{ textAlign: 'center', marginTop: '40px' }}>
+    const renderPassField = (pass: string, disabled: boolean) =>
+      <input
+        type="password"
+        disabled={disabled}
+        value={pass}
+        onChange={e => dispatch({ type: 'TypePass', pass: e.target.value })}
+        style={{ "border": "1px solid #ced4da" }}
+        className="form-control text pass-text"
+        placeholder="Enter password"
+      />
+
+    const renderButton = (disabled: boolean) =>
+      <input
+        disabled={disabled}
+        type="submit"
+        className="form-control btn bs-btn"
+        value="download File"
+      />
+
+    const renderForm = ({ pass, fileName, fileSize }: WithPass & WithFileMetadata, disabled: boolean, gettingFile: boolean, error?: string) =>
+      <div>
+        {error &&
+          <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
+            {error}
+          </div>
+        }
+        {gettingFile &&
           <div>
-            Fill in your password to download and decrypt the file <span style={{ color: 'grey' }}>{fileName} ({getSizeLabel(fileSize)})</span>
+            <div className="alert alert-info" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
+              Downloading and decrypting file. Please leave the window open until the download is finished.
+            </div>
+            <div id="progress-hack" className="progress" />
+          </div>
+        }
+        <div className="download-wrap">
+
+          <div className="row m-0">
+            <div className="col-lg-10 offset-lg-1 text-center">
+              <div className="file-icon">
+                <img src={fileDownloadIcon} className="img-fluid" />
+                <div style={{ color: 'grey', marginTop: '20px' }}>{fileName} ({getSizeLabel(fileSize)})</div>
+              </div>
+
+              <div className="bs-form text-center">
+                <form onSubmit={e => { e.preventDefault(); dispatch({ type: 'GetFile' }) }}>
+                  <div className="form-group">
+                    {renderPassField(pass, disabled)}
+                  </div>
+                  <div className="form-group">
+                    {renderButton(disabled)}
+                  </div>
+                </form>
+              </div>
+
+            </div>
           </div>
         </div>
-        <div className="col-2" />
       </div>
 
-    const renderPassField = (pass: string, disabled?: true) =>
-      <div style={{ textAlign: "center", width: '100%', padding: '10px' }}>
-        <input
-          type='password'
-          disabled={disabled || false}
-          value={pass}
-          style={{ width: '100%' }}
-          onChange={e => dispatch({ type: 'TypePass', pass: e.target.value })}
-        />
-      </div>
-
-    const renderButton = (disabled?: true) =>
-      <div style={{ textAlign: "center", margin: '10px' }}>
-        <button
-          disabled={disabled || false}
-          type="button"
-          className="btn btn-primary"
-          style={{ width: '100%' }}
-          onClick={_ => dispatch({ type: 'GetFile' })}
-        >
-          Get file
-        </button>
-      </div>
-
-    const renderForm = ({ pass, fileName, fileSize }: WithPass & WithFileMetadata, disabled?: true) =>
+    const renderFinished = (model: Finished) =>
       <div>
-        {renderDescription(fileName, fileSize)}
-        <div style={{ marginTop: '20px' }} className="row">
-          <div className="col-4" />
-          <div className="col-4">
-            {renderPassField(pass, disabled)}
-            {renderButton(disabled)}
-          </div>
-          <div className="col-4" />
-        </div>
-      </div>
-
-    const renderFormWithError = (model: WithPass & WithFileMetadata) =>
-      <div>
-        <div className="alert alert-danger" role="alert" style={{ marginTop: '20px' }}>
-          Downloading file failed, try again.
-        </div>
-        {renderForm(model)}
-      </div>
-
-    const renderGettingFile = (model: WithPass & WithFileMetadata) =>
-      <div>
-        <div className="alert alert-info" role="alert" style={{ marginTop: '20px' }}>
-          Downloading and decrypting file. Please leave the window open until the download is finished.
-        </div>
-        <div id="progress-hack" className="progress" />
-        {renderForm(model, true)}
-      </div>
-
-    const renderFinished = () =>
-      <div>
-        <div className="alert alert-success" role="alert" style={{ marginTop: '20px' }}>
+        <div className="alert alert-success" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
           Enjoy your file!
         </div>
-        {/* Because we use dirty functions updateProgressBar and clearProgressBar to update DOM, next div will be removed by react for reasons*/}
-        <div />
         <div className="progress">
           <div className="progress-bar progress-bar-striped" role="progressbar" style={{ width: '100%' }} aria-valuenow={100} aria-valuemin={0} aria-valuemax={100}>100%</div>
         </div>
+        {renderForm(model, true, false, undefined)}
       </div>
 
     function render() {
@@ -538,12 +525,11 @@ function view(model: Model): Html<Msg> {
         case 'GettingFileMetadata':
         case 'GettingKeys': return renderInitializing()
         case 'GettingKeysFailed': return renderError()
-        case 'AwaitingPassSubmit': return renderForm(model)
-        case 'GettingFile': return renderGettingFile(model)
-        case 'GettingFileFailed': return renderFormWithError(model)
-        case 'DecryptingFile': return renderGettingFile(model)
-        case 'DecryptingFileFailed': return renderError()
-        case 'Finished': return renderFinished()
+        case 'AwaitingPassSubmit': return renderForm(model, false, false, undefined)
+        case 'GettingFile': return renderForm(model, true, true, undefined)
+        case 'GettingFileFailed': return renderForm(model, false, false, model.error)
+        case 'DecryptingFile': return renderForm(model, true, true, undefined)
+        case 'Finished': return renderFinished(model)
       }
     }
 

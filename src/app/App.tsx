@@ -1,7 +1,7 @@
 import * as React from 'react'
 
 import { cmd, http } from 'elm-ts'
-import { Html, Dom } from 'elm-ts/lib/React'
+import { Html } from 'elm-ts/lib/React'
 import * as GetLink from './components/GetLink'
 import * as UploadFile from './components/UploadFile'
 import * as GetFile from './components/GetFile'
@@ -12,10 +12,15 @@ import * as Opt from 'fp-ts/lib/Option'
 import * as E from 'fp-ts/lib/Either'
 import { perform } from 'elm-ts/lib/Task'
 import { fromCodec } from './helpers'
+import * as sodium from 'libsodium-wrappers'
+import * as globals from './globals'
+// @ts-ignore
+import logo from '../images/header-logo.png'
 
-const endpoint = (HOST != null) ? `${HOST}/api` : '/api'
+type LinkData = { linkId: string, pk1: string }
 
-type GotLinkId = { type: 'GotLinkId', linkId: Opt.Option<string> }
+type InitializedLibsodium = { type: 'InitializedLibsodium' }
+type GotLinkData = { type: 'GotLinkData', linkData: Opt.Option<LinkData> }
 type GotStatus = { type: 'GotStatus', linkId: string, status: number }
 type FailGetStatus = { type: 'FailGetStatus' }
 type FailBadLink = { type: 'FailBadLink' }
@@ -25,7 +30,8 @@ type UploadFileMsg = { type: 'UploadFileMsg', msg: UploadFile.Msg }
 type GetFileMsg = { type: 'GetFileMsg', msg: GetFile.Msg }
 
 type Msg =
-  | GotLinkId
+  | InitializedLibsodium
+  | GotLinkData
   | GotStatus
   | FailGetStatus
   | FailBadLink
@@ -38,26 +44,38 @@ type UploadFileModel = { type: 'UploadFile', model: UploadFile.Model }
 type GetFileModel = { type: 'GetFile', model: GetFile.Model }
 
 type Initializing = { type: 'Initializing' }
+type FetchingLinkStatus = { type: 'FetchingLinkStatus', linkData: LinkData }
 type Initialized = { type: 'Initialized', childModel: GetLinkModel | UploadFileModel | GetFileModel }
 type PageError = { type: 'PageError', error: Opt.Option<string> }
 
 type Model =
   | Initializing
+  | FetchingLinkStatus
   | Initialized
   | PageError
+
+function loadLibsoium(): cmd.Cmd<Msg> {
+  return pipe(
+    () => sodium.ready,
+    perform(_ => ({ type: 'InitializedLibsodium' }))
+  )
+}
 
 function getLinkId(): cmd.Cmd<Msg> {
 
   const getLinkId = () => {
     if (window.location.pathname === '/')
       return Opt.none
-    else
-      return Opt.some(window.location.pathname.substring(1))
+    else {
+      const linkId = window.location.pathname.substring(1)
+      const pk1 = window.location.hash.substring(1)
+      return Opt.some({ linkId, pk1 })
+    }
   }
 
   return pipe(
     fromIO(getLinkId),
-    perform(linkId => ({ type: 'GotLinkId', linkId }))
+    perform(linkData => ({ type: 'GotLinkData', linkData }))
   )
 }
 
@@ -69,7 +87,7 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
     status: t.number
   })
   const req = {
-    ...http.post(`${endpoint}/get-status`, { link_id: linkId }, fromCodec(schema)),
+    ...http.post(`${globals.endpoint}/request/get-status`, { link_id: linkId }, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -90,11 +108,15 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 }
 
 const initModel: Model = { type: 'Initializing' }
-const init: [Model, cmd.Cmd<Msg>] = [initModel, getLinkId()]
+const init: [Model, cmd.Cmd<Msg>] = [initModel, loadLibsoium()]
 
 const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
   switch (msg.type) {
-    case 'GotLinkId': {
+    case 'InitializedLibsodium': {
+      if (model.type != 'Initializing') throw new Error("Wrong state")
+      else return [model, getLinkId()]
+    }
+    case 'GotLinkData': {
       if (model.type != 'Initializing') throw new Error("Wrong state")
 
       function initGetLink(): [Model, cmd.Cmd<Msg>] {
@@ -107,51 +129,65 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       }
 
       return pipe(
-        msg.linkId,
+        msg.linkData,
         Opt.fold(
           initGetLink,
-          linkId => [model, getLinkStatus(linkId)]
+          linkData => [
+            { type: 'FetchingLinkStatus', linkData },
+            getLinkStatus(linkData.linkId)
+          ]
         )
       )
     }
     case 'GotStatus': {
-      if (model.type != 'Initializing') throw new Error("Wrong state")
+      if (model.type != 'FetchingLinkStatus') throw new Error("Wrong state")
 
-      const linkId = msg.linkId
-
-      function initUploadFile(): [Model, cmd.Cmd<Msg>] {
-        const [uploadFile, uploadFileCmd] = UploadFile.init(linkId)
-
-        return [
-          { ...model, type: 'Initialized', childModel: { type: 'UploadFile', model: uploadFile } },
-          cmd.map<UploadFile.Msg, Msg>(msg => ({ type: 'UploadFileMsg', msg }))(uploadFileCmd)
-        ]
+      function initUploadFile(model: FetchingLinkStatus): [Model, cmd.Cmd<Msg>] {
+        try {
+          const [uploadFile, uploadFileCmd] = UploadFile.init(model.linkData.linkId, sodium.from_base64(model.linkData.pk1))
+          return [
+            { ...model, type: 'Initialized', childModel: { type: 'UploadFile', model: uploadFile } },
+            cmd.map<UploadFile.Msg, Msg>(msg => ({ type: 'UploadFileMsg', msg }))(uploadFileCmd)
+          ]
+        } catch {
+          return [
+            { type: 'PageError', error: Opt.none },
+            cmd.none
+          ]
+        }
       }
 
-      function initGetFile(): [Model, cmd.Cmd<Msg>] {
-        const [getFile, getFileCmd] = GetFile.init(linkId)
+      function initGetFile(model: FetchingLinkStatus): [Model, cmd.Cmd<Msg>] {
+        try {
+          const [getFile, getFileCmd] = GetFile.init(model.linkData.linkId, sodium.from_base64(model.linkData.pk1))
 
-        return [
-          { ...model, type: 'Initialized', childModel: { type: 'GetFile', model: getFile } },
-          cmd.map<GetFile.Msg, Msg>(msg => ({ type: 'GetFileMsg', msg }))(getFileCmd)
-        ]
+          return [
+            { ...model, type: 'Initialized', childModel: { type: 'GetFile', model: getFile } },
+            cmd.map<GetFile.Msg, Msg>(msg => ({ type: 'GetFileMsg', msg }))(getFileCmd)
+          ]
+        } catch {
+          return [
+            { type: 'PageError', error: Opt.none },
+            cmd.none
+          ]
+        }
       }
 
       switch (msg.status) {
         case 2:
         case 3:
         case 4:
-        case 5: return initUploadFile()
-        case 6: return initGetFile()
+        case 5: return initUploadFile(model)
+        case 6: return initGetFile(model)
         default: return [{ ...model, type: 'PageError', error: Opt.none }, cmd.none]
       }
     }
     case 'FailGetStatus': {
-      if (model.type != 'Initializing') throw new Error("Wrong state")
+      if (model.type != 'FetchingLinkStatus') throw new Error("Wrong state")
       return [{ ...model, type: 'PageError', error: Opt.none }, cmd.none]
     }
     case 'FailBadLink': {
-      if (model.type != 'Initializing') throw new Error("Wrong state")
+      if (model.type != 'FetchingLinkStatus') throw new Error("Wrong state")
       return [{ ...model, type: 'PageError', error: Opt.some(`Non-existent link id`) }, cmd.none]
     }
     case 'GetLinkMsg': {
@@ -188,7 +224,7 @@ function view(model: Model): Html<Msg> {
   return dispatch => {
 
     const renderError = (error: Opt.Option<string>) =>
-      <div className="alert alert-danger" role="alert" style={{ marginTop: '20px' }}>
+      <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
         {pipe(
           error,
           Opt.fold(
@@ -205,30 +241,40 @@ function view(model: Model): Html<Msg> {
         </div>
       </div>
 
-    function renderChild(child: Dom) {
-      return (
-        <div>
-          {child}
-        </div>
-      )
-    }
-
     function render() {
       switch (model.type) {
         case 'PageError': return renderError(model.error)
-        case 'Initializing': return renderInitializing()
+        case 'Initializing':
+        case 'FetchingLinkStatus': return renderInitializing()
         case 'Initialized': {
           switch (model.childModel.type) {
-            case 'GetLink': return renderChild(GetLink.view(model.childModel.model)(msg => dispatch({ type: 'GetLinkMsg', msg })))
-            case 'UploadFile': return renderChild(UploadFile.view(model.childModel.model)(msg => dispatch({ type: 'UploadFileMsg', msg })))
-            case 'GetFile': return renderChild(GetFile.view(model.childModel.model)(msg => dispatch({ type: 'GetFileMsg', msg })))
+            case 'GetLink': return GetLink.view(model.childModel.model)(msg => dispatch({ type: 'GetLinkMsg', msg }))
+            case 'UploadFile': return UploadFile.view(model.childModel.model)(msg => dispatch({ type: 'UploadFileMsg', msg }))
+            case 'GetFile': return GetFile.view(model.childModel.model)(msg => dispatch({ type: 'GetFileMsg', msg }))
           }
         }
-        default: return <div></div>
       }
     }
 
-    return render()
+    return (
+      <div className="holder">
+        <div className="holder-section">
+          <div className="container">
+            <div className="header-wrap">
+              <div className="row">
+                <div className="col-lg-10 col-md-6 offset-lg-1 offset-md-3 text-center">
+                  <div className="header-logo ">
+                    <a href="/"><img src={logo} className="img-fluid" /></a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {render()}
+          </div>
+        </div>
+      </div>
+
+    )
   }
 }
 

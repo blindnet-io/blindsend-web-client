@@ -1,6 +1,6 @@
 {
   "name": "blindsend",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -54,7 +54,9 @@
     "fp-ts": "^2.7.1",
     "io-ts": "^2.2.9",
     "io-ts-types": "^0.5.8",
+    "jquery": "^3.5.1",
     "libsodium-wrappers": "^0.7.6",
+    "popper.js": "^1.16.1",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
     "rxjs": "^6.6.2",
