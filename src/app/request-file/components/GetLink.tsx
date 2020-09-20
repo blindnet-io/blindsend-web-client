@@ -7,8 +7,8 @@ import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
-import { fromCodec } from '../helpers'
-import { endpoint } from '../globals'
+import { fromCodec } from '../../helpers'
+import { endpoint } from '../../globals'
 
 type CryptoData = {
   pk: Uint8Array,
@@ -270,22 +270,22 @@ function view(model: Model): Html<Msg> {
                   </div>
                 }
               </div>
-            </div>
-          </div>
-          {link != undefined &&
-            <div>
-              <div className="Link-generated text-center" >
-                <div className="link" style={{ padding: "10px" }}>
-                  <a href={link}>{link}</a>
+              {link != undefined &&
+                <div>
+                  <div className="Link-generated text-center" >
+                    <div className="link" style={{ padding: "10px" }}>
+                      <a style={{ wordWrap: 'break-word' }} href={link}>{link}</a>
+                    </div>
+                  </div>
+                  {copied != undefined && copied &&
+                    <div className="alert alert-success" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
+                      Link copied to clipboard
                 </div>
-              </div>
-              {copied != undefined && copied &&
-                <div className="alert alert-success" role="alert" style={{ marginTop: '20px', textAlign: 'center' }}>
-                  Link copied to clipboard
-              </div>
+                  }
+                </div>
               }
             </div>
-          }
+          </div>
         </div>
       </div>
 
