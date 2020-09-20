@@ -39,7 +39,16 @@ module.exports = merge(common, {
     rules: [
       {
         test: /\.scss$/,
-        use: [MiniCssExtractPlugin.loader, "css-loader", "sass-loader"]
+        use: [
+          {
+            loader: MiniCssExtractPlugin.loader,
+            options: {
+              publicPath: '../'
+            }
+          },
+          "css-loader",
+          "sass-loader"
+        ]
       }
     ]
   },
@@ -53,7 +62,8 @@ module.exports = merge(common, {
       filename: 'index.html',
       base: '/',
       inlineSource: 'runtime~.+\\.js',
-      sodiumInject: '<script src="js/sodium.js"></script>'
+      sodiumInject: '<script src="js/sodium.js"></script>',
+      minify: false
     }),
     new InlineSourcePlugin(HtmlWebpackPlugin),
     new webpack.DefinePlugin({
@@ -62,7 +72,7 @@ module.exports = merge(common, {
     }),
     new CopyPlugin({
       patterns: [
-        { from: './src/images', to: 'images' },
+        { from: './src/images/favicon.ico', to: 'images/favicon.ico' },
         { from: './src/libs/sodium', to: 'js/sodium.js' },
         { from: './src/libs/mitm', to: 'mitm' },
       ],

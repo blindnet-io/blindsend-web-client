@@ -3,12 +3,15 @@ const { merge } = require("webpack-merge");
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const common = require("./webpack.common");
 const webpack = require('webpack');
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = merge(common, {
   mode: "development",
-  entry: './src/app/index.tsx',
+  entry: {
+    main: './src/app/index.tsx'
+  },
   output: {
-    filename: "bundle.js",
+    filename: "[name].bundle.js",
     path: path.join(__dirname, '/dist'),
   },
   devtool: 'cheap-eval-source-map',
