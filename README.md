@@ -2,7 +2,7 @@
 
 This project is a web client for [blindsend](https://github.com/blindnet-io/blindsend), an open source tool for private, end-to-end encrypted file exchange between two parties.
 
-Blindsend web client provides a web UI that uses blindsend [server (API)](https://github.com/blindnet-io/blindsend-be) for private file exchange. It also performs local encryption and decryption of the exchanged files, so that all files exchanged via blindsend are always encrypted and decrypted only on Sender's/Receiver's local machines.
+Blindsend web client provides a web UI that uses blindsend [server (API)](https://github.com/blindnet-io/blindsend-be) for private file exchange. It also performs local encryption and decryption of the exchanged files, so that all files exchanged via blindsend are always encrypted and decrypted only on Sender's/Receiver's local machines. Web UI has been tested on Chrome, Chromium, and Firefox (all desktop).
 
 Blindsend web UI is intended to be used together with [blindsend server](https://github.com/blindnet-io/blindsend-be). A demo is avalable [here](https://blindsend.xyz).
 
