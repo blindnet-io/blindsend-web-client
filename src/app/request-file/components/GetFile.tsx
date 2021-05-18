@@ -15,10 +15,10 @@ import {
 } from "web-streams-polyfill/ponyfill"
 import * as streamAdapter from '@mattiasbuelens/web-streams-adapter'
 import * as streamSaver from 'streamsaver'
-import { fromCodec } from '../helpers'
-import * as globals from '../globals'
+import { fromCodec } from '../../helpers'
+import * as globals from '../../globals'
 // @ts-ignore
-import fileDownloadIcon from '../../images/file-download.png';
+import fileDownloadIcon from '../../../images/file-download.png';
 
 // @ts-ignore
 streamSaver.WritableStream = WritableStream
@@ -303,7 +303,7 @@ function decryptFile(encFileContent: ReadableStream<Uint8Array>, cryptoData: Cry
 
   // @ts-ignore
   const mappedToFixedChunksTransformer: TransformStream<Uint8Array, Uint8Array> =
-    toPolyfillTransform(toFixedChunkSizesTransformer(globals.encryptionChunkSize + 17))
+    toPolyfillTransform(toFixedChunkSizesTransformer(globals.encryptionChunkSize))
   // @ts-ignore
   const mappedDecryptTransformer: TransformStream<Uint8Array, Uint8Array> =
     toPolyfillTransform(decryptTransformer(state))

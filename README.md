@@ -22,6 +22,13 @@ npm run build-local
 
 This will create a `dist` folder in project's root. To integrate blindsend web UI with the server, [install blindsend server](https://github.com/blindnet-io/blindsend-be) and put the `dist` folder in the same location as your `blindsend.jar` before running the server.
 
+## Design
+
+When uploading a file, the file is split into chunks of size `uploadChunkSize` (default 4MB) found in `globals.ts` file. So byte arrays of 4MB are loaded into the memory, encrypted and sent to the server.  
+When js `fetch` api implementations start supporting `ReadableStream<Uint8Array>` request bodies, one request will be enough to transfer the file.
+
+When downloading a file, the entire file is downloaded in a single request. Body of a response of the `fetch` api has type `ReadableStream<Uint8Array>` so the file bytes can be decrypted (transformed with `TransformStream`) before the entire file arrives. As soon as a tiny part (`encryptionChunkSize` in `globals.ts`) of file is decrypted, it is streamed to disk with a help from [StreamSaver](https://github.com/jimmywarting/StreamSaver.js) library. At no point is the whole file kept in memory, just the part currently being decrypted.
+
 ## Dependencies
 
 Web UI implementation is written in [TypeScript](https://www.typescriptlang.org/) and [React](https://reactjs.org/).  

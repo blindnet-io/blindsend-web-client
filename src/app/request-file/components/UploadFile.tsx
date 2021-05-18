@@ -7,22 +7,15 @@ import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
 import * as sodium from 'libsodium-wrappers'
-import {
-  ReadableStream,
-  WritableStream,
-  TransformStream,
-  TransformStreamDefaultController
-} from "web-streams-polyfill/ponyfill"
-
+import { ReadableStream } from "web-streams-polyfill/ponyfill"
 import * as streamAdapter from '@mattiasbuelens/web-streams-adapter'
-import { fromCodec } from '../helpers'
-import * as globals from '../globals'
+import { fromCodec } from '../../helpers'
+import * as globals from '../../globals'
 // @ts-ignore
-import fileUploadIcon from '../../images/file-upload.png';
+import fileUploadIcon from '../../../images/file-upload.png';
 
 // @ts-ignore
 const toPolyfillReadable = streamAdapter.createReadableStreamWrapper(ReadableStream)
-const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(TransformStream)
 
 type UploadParams = {
   maxFileSize: number
@@ -41,8 +34,10 @@ type FailUploadingFile = { type: 'FailUploadingFile', error: string }
 type SetFile = { type: 'SetFile', file: File }
 type GetRequesterKeys = { type: 'GetRequesterKeys' }
 type GotRequesterKeys = { type: 'GotRequesterKeys', uploadId: string }
+type InitializeUpload = { type: 'InitializeUpload' }
+type UploadFileChunk = { type: 'UploadFileChunk', offset: number, nextPartId: number }
 type GeneratedKeys = { type: 'GeneratedKeys', cryptoData: CryptoData }
-type UploadedFile = { type: 'UploadedFile', streamEncHeader: Uint8Array }
+type UploadedFile = { type: 'UploadedFile' }
 type SavedKeys = { type: 'SavedKeys' }
 
 type DragEnter = { type: 'DragEnter' }
@@ -56,6 +51,8 @@ type Msg =
   | FailUploadingFile
   | SetFile
   | GetRequesterKeys
+  | InitializeUpload
+  | UploadFileChunk
   | GotRequesterKeys
   | GeneratedKeys
   | UploadedFile
@@ -79,7 +76,9 @@ type UploadingFileFailed = { type: 'UploadingFileFailed', error: string } & With
 type FileSet = { type: 'FileSet' } & WithLinkData & WithUploadParams & WithFile & WithFilePicker
 type GettingRequesterKeys = { type: 'GettingRequesterKeys' } & WithLinkData & WithUploadParams & WithFile
 type GeneratingKeys = { type: 'GeneratingKeys' } & WithLinkData & WithUploadParams & WithFile & WithUploadId
-type EncryptingAndUploadingFile = { type: 'EncryptingAndUploadingFile' } & WithLinkData & WithUploadParams & WithKeys & WithFile
+type PreparingFileUpload = { type: 'PreparingFileUpload' } & WithLinkData & WithUploadParams & WithKeys & WithFile & WithUploadId
+type EncryptingAndUploadingFile = { type: 'EncryptingAndUploadingFile', state: sodium.StateAddress, streamEncHeader: Uint8Array, offset: number } &
+  WithLinkData & WithUploadParams & WithKeys & WithFile & WithUploadId
 type SavingKeys = { type: 'SavingKeys' } & WithLinkData & WithUploadParams & WithKeys & WithFile
 type Finished = { type: 'Finished' } & WithFile & WithUploadParams
 
@@ -92,6 +91,7 @@ type Model =
   | FileSet
   | GettingRequesterKeys
   | GeneratingKeys
+  | PreparingFileUpload
   | EncryptingAndUploadingFile
   | SavingKeys
   | Finished
@@ -124,7 +124,7 @@ function getUploadParams(): cmd.Cmd<Msg> {
   )(req)
 }
 
-function getUploadId(linkId: String): cmd.Cmd<Msg> {
+function getRequesterKeys(linkId: String): cmd.Cmd<Msg> {
 
   type Resp = { upload_id: string }
   const schema = t.interface({
@@ -163,121 +163,106 @@ function generateKeys(pk1: Uint8Array): cmd.Cmd<Msg> {
   )
 }
 
-function encryptAndUploadFile(file: File, masterKey: Uint8Array, linkId: string, uploadId: string): cmd.Cmd<Msg> {
+function initUpload(file: File, linkId: string, uploadId: string): cmd.Cmd<Msg> {
+  const encSize = file.size + Math.ceil(file.size / (globals.encryptionChunkSize - 17)) * 17 + 17
 
-  function toFixedChunkSizesTransformer(desiredChunkSize: number): TransformStream<Uint8Array, Uint8Array> {
-
-    let leftOverBytes = new Uint8Array()
-    return new TransformStream<Uint8Array, Uint8Array>({
-      transform: (chunk: Uint8Array, ctrl: TransformStreamDefaultController<Uint8Array>) => {
-
-        function loopPushBytes(start: number) {
-          if (leftOverBytes.length > 0) {
-            const chunkPart = chunk.slice(start, start + desiredChunkSize - leftOverBytes.length)
-            if (chunkPart.length + leftOverBytes.length < desiredChunkSize) {
-              var newChunk = new Uint8Array(chunkPart.length + leftOverBytes.length)
-              newChunk.set(leftOverBytes, 0)
-              newChunk.set(chunkPart, leftOverBytes.length)
-              leftOverBytes = newChunk
-            } else {
-              var newChunk = new Uint8Array(desiredChunkSize)
-              newChunk.set(leftOverBytes, 0)
-              newChunk.set(chunkPart, leftOverBytes.length)
-              ctrl.enqueue(newChunk)
-              leftOverBytes = new Uint8Array()
-              loopPushBytes(start + chunkPart.length)
-            }
-
-          } else if (start + desiredChunkSize <= chunk.length) {
-            ctrl.enqueue(chunk.slice(start, start + desiredChunkSize))
-            loopPushBytes(start + desiredChunkSize)
-
-          } else {
-            leftOverBytes = chunk.slice(start)
-          }
-        }
-        loopPushBytes(0)
-      },
-      flush: (ctrl: TransformStreamDefaultController<Uint8Array>) => {
-        if (leftOverBytes.length > 0) ctrl.enqueue(leftOverBytes)
-      }
-    })
+  const schema = t.any
+  const body = {
+    link_id: linkId,
+    upload_id: uploadId,
+    file_size: encSize
   }
 
-
-  function encryptTransformer(state: sodium.StateAddress): TransformStream<Uint8Array, Uint8Array> {
-    return new TransformStream<Uint8Array, Uint8Array>({
-      transform: (chunk: Uint8Array, ctrl: TransformStreamDefaultController<Uint8Array>) => {
-        const cypherText = sodium.crypto_secretstream_xchacha20poly1305_push(state, chunk, null, 0) // XChaCha20-Poly1305
-        ctrl.enqueue(cypherText)
-      },
-      flush: (ctrl: TransformStreamDefaultController<Uint8Array>) => {
-        const end = sodium.crypto_secretstream_xchacha20poly1305_push(state, new Uint8Array(), null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL) // XChaCha20-Poly1305
-        ctrl.enqueue(end)
-      }
-    })
+  const req = {
+    ...http.post(`${globals.endpoint}/request/init-send-file`, body, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
   }
 
-  // @ts-ignore
-  const mappedFileStream: ReadableStream<Uint8Array> =
-    toPolyfillReadable(file.stream())
-
-  const { state, header: streamEncHeader } = sodium.crypto_secretstream_xchacha20poly1305_init_push(masterKey) // XChaCha20-Poly1305
-
-  // TODO: body should be stream but it is not implemented yet.The whole file is loaded in RAM in arr variable.
-  let arr = new Uint8Array(Math.floor(file.size / globals.encryptionChunkSize + 1 + 1) * 17 + file.size)
-  let i = 0
-
-  // @ts-ignore
-  const mappedToFixedChunksTransformer: TransformStream<Uint8Array, Uint8Array> =
-    toPolyfillTransform(toFixedChunkSizesTransformer(globals.encryptionChunkSize))
-  // @ts-ignore
-  const mappedDecryptTransformer: TransformStream<Uint8Array, Uint8Array> =
-    toPolyfillTransform(encryptTransformer(state))
-
-  const handleFileTask: task.Task<Msg> = () =>
-    mappedFileStream
-      .pipeThrough(mappedToFixedChunksTransformer)
-      .pipeThrough(mappedDecryptTransformer)
-      .pipeTo(new WritableStream({
-        write(chunk) {
-          arr.set(chunk, i)
-          i = i + chunk.length
-        }
-      }))
-      .then(
-        () => fetch(`${globals.endpoint}/request/send-file/${linkId}/${uploadId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/octet-stream'
-          },
-          body: arr.buffer
-        })
+  return http.send<any, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, any, Msg>(
+        _ => ({ type: 'FailUploadingFile', error: 'Uploading failed. Try again.' }),
+        _ => ({ type: 'InitializeUpload' })
       )
-      .then(resp => {
-        if (resp.status === 200)
-          return E.right('')
-        else if (resp.status === 400)
-          return resp.text().then(msg => E.left(msg))
-        else
-          return E.left('Uploading failed. Try again.')
-      })
-      .then(result =>
-        pipe(
-          result,
-          E.fold<string, string, Msg>(
-            error => ({ type: 'FailUploadingFile', error }),
-            _ => ({ type: 'UploadedFile', streamEncHeader })
-          )
-        )
-      )
-      .catch(e => {
-        console.log(e)
+    )
+  )(req)
+}
+
+function encryptAndUploadFileChunk(file: File, offset: number, state: sodium.StateAddress, linkId: string, uploadId: string, partId: number): cmd.Cmd<Msg> {
+
+  function handleUpload(chunk: Uint8Array, msg: Msg, last: boolean): Promise<Msg> {
+    // TODO: handle backpressure
+    return fetch(`${globals.endpoint}/request/send-file-part/${linkId}/${uploadId}?part_id=${partId}&chunk_size=${chunk.length}&last=${last}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },
+      body: chunk.buffer
+    }).then(resp => {
+      if (resp.status === 200)
+        return msg
+      else if (resp.status === 400)
         return ({ type: 'FailUploadingFile', error: 'Uploading failed. Try again.' })
-      })
+      else {
+        console.log("ERR")
+        return task.delay(1000)<Msg>(() =>
+          handleUpload(chunk, msg, last)
+        )()
+        // ({ type: 'UploadFileChunk', offset, nextPartId: partId })))()
+      }
+    })
+  }
+
+  const fileChunkLen = globals.uploadChunkSize - (globals.uploadChunkSize / globals.encryptionChunkSize) * 17
+
+  const handleFileChunk: task.Task<Msg> = (offset + globals.uploadChunkSize >= file.size)
+    ? () =>
+      file.slice(offset, file.size).arrayBuffer()
+        .then(buffer => {
+
+          const byteArr = new Uint8Array(buffer)
+
+          let encryptedChunk: Uint8Array = new Uint8Array(
+            byteArr.length + Math.ceil(byteArr.length / (globals.encryptionChunkSize - 17)) * 17 + 17
+          )
+
+          let i: number, encryptionChunk: Uint8Array
+          let t = 0
+          for (i = 0; i < byteArr.length; i = i + globals.encryptionChunkSize - 17) {
+            encryptionChunk = byteArr.slice(i, i + globals.encryptionChunkSize - 17)
+            const encryptedEncChunk = sodium.crypto_secretstream_xchacha20poly1305_push(state, encryptionChunk, null, 0) // XChaCha20-Poly1305
+            encryptedChunk.set(encryptedEncChunk, t)
+            t += encryptedEncChunk.length
+          }
+
+          const last = sodium.crypto_secretstream_xchacha20poly1305_push(state, new Uint8Array(), null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL)
+          encryptedChunk.set(last, t)
+
+          return handleUpload(encryptedChunk, ({ type: 'UploadedFile' }), true)
+        })
+    : () =>
+      file.slice(offset, offset + fileChunkLen).arrayBuffer()
+        .then(buffer => {
+
+          const byteArr = new Uint8Array(buffer)
+
+          let encryptedChunk: Uint8Array = new Uint8Array(globals.uploadChunkSize)
+
+          let i: number, encryptionChunk: Uint8Array
+          let t = 0
+          for (i = 0; i < byteArr.length; i = i + globals.encryptionChunkSize - 17) {
+            encryptionChunk = byteArr.slice(i, i + globals.encryptionChunkSize - 17)
+            const encryptedEncChunk = sodium.crypto_secretstream_xchacha20poly1305_push(state, encryptionChunk, null, 0) // XChaCha20-Poly1305
+            encryptedChunk.set(encryptedEncChunk, t)
+            t += encryptedEncChunk.length
+          }
+
+          return handleUpload(encryptedChunk, ({ type: 'UploadFileChunk', offset: offset + fileChunkLen, nextPartId: partId + 1 }), false)
+        })
 
   return pipe(
-    handleFileTask,
+    handleFileChunk,
     perform(msg => msg)
   )
 }
@@ -332,10 +317,13 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'FailSetFile': {
       if (model.type != 'AwaitingFileUpload' && model.type != 'FileSet' && model.type != 'UploadingFileFailed' && model.type != 'SettingFileFailed') throw new Error("Wrong state")
-      else return [{ ...model, filePicker: { hovered: false }, type: 'SettingFileFailed', error: msg.error }, cmd.none]
+      else return [
+        { type: 'SettingFileFailed', linkId: model.linkId, pk1: model.pk1, uploadParams: model.uploadParams, filePicker: { hovered: false }, error: msg.error },
+        cmd.none
+      ]
     }
     case 'FailUploadingFile': {
-      if (model.type != 'FileSet' && model.type != 'GettingRequesterKeys' && model.type != 'EncryptingAndUploadingFile' && model.type != 'SavingKeys') throw new Error("Wrong state")
+      if (model.type != 'FileSet' && model.type != 'GettingRequesterKeys' && model.type != 'PreparingFileUpload' && model.type != 'EncryptingAndUploadingFile' && model.type != 'SavingKeys') throw new Error("Wrong state")
       else return [{ ...model, filePicker: { hovered: false }, type: 'UploadingFileFailed', error: msg.error }, cmd.none]
     }
     case 'SetFile': {
@@ -347,7 +335,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'GetRequesterKeys': {
       if (model.type != 'FileSet' && model.type != 'UploadingFileFailed') throw new Error("Wrong state")
-      else return [{ ...model, type: 'GettingRequesterKeys' }, getUploadId(model.linkId)]
+      else return [{ ...model, type: 'GettingRequesterKeys' }, getRequesterKeys(model.linkId)]
     }
     case 'GotRequesterKeys': {
       if (model.type != 'GettingRequesterKeys') throw new Error("Wrong state")
@@ -355,11 +343,30 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'GeneratedKeys': {
       if (model.type != 'GeneratingKeys') throw new Error("Wrong state")
-      else return [{ ...model, type: 'EncryptingAndUploadingFile', keys: msg.cryptoData }, encryptAndUploadFile(model.file, msg.cryptoData.masterKey, model.linkId, model.uploadId)]
+      else return [{ ...model, type: 'PreparingFileUpload', keys: msg.cryptoData }, initUpload(model.file, model.linkId, model.uploadId)]
+    }
+    case 'InitializeUpload': {
+      if (model.type != 'PreparingFileUpload') throw new Error("Wrong state")
+      else {
+        const { state, header: streamEncHeader } = sodium.crypto_secretstream_xchacha20poly1305_init_push(model.keys.masterKey) // XChaCha20-Poly1305
+        return [
+          { ...model, type: 'EncryptingAndUploadingFile', state, streamEncHeader, offset: 0 },
+          encryptAndUploadFileChunk(model.file, 0, state, model.linkId, model.uploadId, 1)
+        ]
+      }
+    }
+    case 'UploadFileChunk': {
+      if (model.type != 'EncryptingAndUploadingFile') throw new Error("Wrong state")
+      else {
+        return [
+          { ...model, offset: msg.offset },
+          encryptAndUploadFileChunk(model.file, msg.offset, model.state, model.linkId, model.uploadId, msg.nextPartId)
+        ]
+      }
     }
     case 'UploadedFile': {
       if (model.type != 'EncryptingAndUploadingFile') throw new Error("Wrong state")
-      else return [{ ...model, type: 'SavingKeys' }, saveKeys(model.linkId, model.fileName, model.fileSize, msg.streamEncHeader, model.keys)]
+      else return [{ ...model, type: 'SavingKeys' }, saveKeys(model.linkId, model.fileName, model.fileSize, model.streamEncHeader, model.keys)]
     }
     case 'SavedKeys': {
       if (model.type != 'SavingKeys') throw new Error("Wrong state")
@@ -509,7 +516,7 @@ function view(model: Model): Html<Msg> {
     function renderFileUploading(uploadParams: UploadParams) {
       const percentage =
         model.type === 'EncryptingAndUploadingFile'
-          ? 0
+          ? Math.min(100, Math.ceil((model.offset) / model.file.size * 100))
           : model.type === 'SavingKeys'
             ? 100
             : 0
@@ -562,7 +569,6 @@ function view(model: Model): Html<Msg> {
       )
     }
 
-    // @ts-ignore
     function render() {
       switch (model.type) {
         case 'PageError': return renderError()
@@ -573,6 +579,7 @@ function view(model: Model): Html<Msg> {
         case 'FileSet': return renderFileSet(model.uploadParams)
         case 'GettingRequesterKeys':
         case 'GeneratingKeys':
+        case 'PreparingFileUpload':
         case 'EncryptingAndUploadingFile':
         case 'SavingKeys': return renderFileUploading(model.uploadParams)
         case 'Finished': return renderFileUploaded(model.uploadParams)
