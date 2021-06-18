@@ -1,0 +1,304 @@
+.main-drop__file-wrap {
+  position: relative;
+  height: 304px;
+  border-radius: 8px;
+  margin: 16px 0;
+  padding: 7px;
+
+  @include mq ($lg) {
+    height: 200px;
+  }
+
+  @include mq ($sm) {
+    height: 134px;
+  }
+
+  &.empty {
+    .main-drop__file-wrap-inner-wrap {
+      justify-content: center;
+      align-items: center;
+    }
+  }
+
+  &.drag {
+    .main-drop__file-wrap-inner {
+      background: rgba(#6d7680, 0.5);
+    }
+  }
+
+  .main-drop__file:not(:last-of-type) {
+    margin-bottom: 13px;
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('../images/drop-border.svg');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+  }
+}
+
+.main-drop__file-wrap-inner {
+  height: 100%;
+  position: relative;
+  padding: 18px;
+  border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #90a4ae transparent;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  border: 5px solid transparent;
+  border-left: none;
+
+  @include mq($sm) {
+    border: 2px solid transparent;
+    padding: 8px;
+  }
+
+  &::-webkit-scrollbar {
+    width: 8px;
+
+    @include mq($sm) {
+      width: 6px;
+    }
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #90a4ae;
+  }
+}
+
+.main-drop__file-wrap-inner-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  flex-direction: column;
+}
+
+.main-drop__file-msg {
+  position: relative;
+  font-size: 22px;
+
+  @include mq($lap-large) {
+    font-size: 20px;
+  }
+
+  @include mq($lg) {
+    display: none;
+  }
+}
+
+.main-drop__file-icon-mob {
+  position: relative;
+  display: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid $white;
+  margin-bottom: 10px;
+
+  @include mq($lg) {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  @include mq($sm) {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.main-drop__file-msg-mob {
+  position: relative;
+  display: none;
+
+  @include mq($lg) {
+    font-size: 18px;
+    display: block;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+  }
+}
+
+.main-drop__browse {
+  font-size: 24px;
+
+  @include mq($lap-large) {
+    font-size: 20px;
+  }
+
+  @include mq($xl) {
+    font-size: 18px;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+  }
+}
+
+.main-drop__file {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 24px;
+  font-size: 20px;
+  z-index: 1;
+  width: 100%;
+  border-radius: 8px;
+  background: $almost-grey;
+
+  @include mq($lap-large) {
+    font-size: 18px;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+    border-radius: 4px;
+    padding: 8px;
+  }
+
+  @include mq(400) {
+    font-size: 10px;
+  }
+
+  &.not-complete {
+    .main-drop__file-bar {
+      width: 70%;
+    }
+  }
+
+  &.large-file {
+    color: rgba(41, 43, 46, 0.3);
+
+    .main-drop__file-bar {
+      width: 100%;
+      background: $orange;
+    }
+
+    .main-drop__file-bar-status {
+      display: none;
+    }
+  }
+}
+
+.main-drop__file-bar-status-text {
+  display: flex;
+  align-items: center;
+}
+
+.main-drop__file-name {
+  display: block;
+}
+
+.main-drop__file-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(116.16deg, rgba(87, 58, 124, 0.7)16.47%, rgba(55, 106, 123, 0.7) 83.53%);
+  border-radius: 8px;
+  z-index: -1;
+
+  @include mq($sm) {
+    border-radius: 6px;
+  }
+}
+
+.main-drop__file-bar-status {
+  display: flex;
+}
+
+.main-drop__file-cross {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 15px;
+  cursor: pointer;
+
+  svg {
+    circle {
+      transition: $dur $ease;
+    }
+  }
+
+  @include mq($sm) {
+    font-size: 8px;
+    width: 16px;
+    height: 16px;
+  }
+
+  @include hover {
+    svg {
+      circle {
+        fill: $orange;
+      }
+    }
+  }
+}
+
+.main-drop__file-remove-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: $almost-grey;
+  border-radius: 8px;
+
+  @include mq($sm) {
+    border-radius: 6px;
+  }
+
+  span {
+    width: 50%;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    cursor: pointer;
+    transition: $dur $ease;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+
+    @include hover {
+      text-decoration-color: $white;
+    }
+  }
+}
+
+.main-drop__file-remove-delete {
+  background: $orange;
+  border-radius: 8px;
+
+  @include mq($sm) {
+    border-radius: 6px;
+  }
+}

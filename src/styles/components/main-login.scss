@@ -1,0 +1,97 @@
+.main-login__remember-wrap {
+  display: flex;
+  align-items: center;
+  margin: 24px 0;
+  font-size: 22px;
+
+  @include mq($lap-large) {
+    font-size: 20px;
+  }
+
+  @include mq($lap-med) {
+    font-size: 18px;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+  }
+}
+
+.main-login__remember[type='checkbox'] {
+  height: 0;
+  width: 0;
+  visibility: hidden;
+}
+
+.main-login__remember-label {
+  cursor: pointer;
+  text-indent: 80px;
+  width: 64px;
+  height: 32px;
+  background: linear-gradient(116.16deg, $darker-grey 16.47%, $grey 83.53%);
+  display: flex;
+  align-items: center;
+  border-radius: 32px;
+  position: relative;
+  margin-right: 24px;
+
+  @include mq($lg) {
+    width: 48px;
+    height: 26px;
+  }
+
+  @include mq($sm) {
+    width: 32px;
+    height: 16px;
+    margin-right: 7px;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 5px;
+    width: 24px;
+    height: 24px;
+    background: $white;
+    border-radius: 24px;
+    transition: 0.3s;
+
+    @include mq($lg) {
+      width: 18px;
+      height: 18px;
+      top: 4.5px;
+      left: 3px;
+    }
+
+    @include mq($sm) {
+      width: 12px;
+      height: 12px;
+      top: 2.5px;
+      left: 3px;
+    }
+  }
+}
+
+.main-login__remember:checked+label {
+  background: $green;
+}
+
+.main-login__remember:checked+label::after {
+  left: calc(100% - 3px);
+  transform: translateX(-100%);
+}
+
+.main-login__remember-label:active::after {
+  width: 15px;
+}
+
+.main-login__create-link {
+  @include mq($lap-large, min) {
+    font-size: 22px;
+  }
+}

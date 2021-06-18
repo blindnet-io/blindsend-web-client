@@ -1,0 +1,10 @@
+.site-main__wrap {
+  @include mq($lg, min) {
+    flex: 0 0 52.85%;
+    max-width: 52.85%;
+  }
+
+  @include mq($lg) {
+    order: 3;
+  }
+}

@@ -1,0 +1,22 @@
+.site-footer {
+  margin: 4px 16px 8px;
+
+  @include mq($lg) {
+    margin: 12px 16px;
+  }
+}
+
+.site-footer__content {
+  display: flex;
+  justify-content: flex-end;
+
+  @include mq($sm) {
+    justify-content: center;
+  }
+
+  span {
+    &:last-child {
+      margin-left: 14px;
+    }
+  }
+}

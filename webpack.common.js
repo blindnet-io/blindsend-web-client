@@ -34,6 +34,9 @@ module.exports = {
       }
     ]
   },
+  externals: {
+    'libsodium-wrappers': 'sodium'
+  },
   plugins: [
     new webpack.ProgressPlugin(),
     new ForkTsCheckerWebpackPlugin()

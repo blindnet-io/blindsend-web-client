@@ -1,0 +1,59 @@
+.main-exchange__link-wrap {
+  background: $almost-black;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.07);
+  border-radius: 8px;
+  padding: 37px 50px;
+  margin-top: 16px;
+  text-align: center;
+  border: 1.5px solid $grey-2;
+
+  @include mq($lg) {
+    padding: 40px;
+  }
+
+  @include mq($sm) {
+    padding: 30px;
+  }
+}
+
+.main-exchange__link {
+  font-size: 22px;
+  line-height: 1.1;
+  word-break: break-all;
+  border-bottom: none;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: $dur $ease;
+
+  @include hover {
+    text-decoration-color: $white;
+  }
+
+  @include mq($lap-large) {
+    font-size: 20px;
+  }
+
+  @include mq($lap-med) {
+    font-size: 18px;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+    text-decoration-color: $white;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+  }
+}
+
+.main-exchange__copy {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.main-exchange__copy-icon {
+  margin-left: 16px;
+  display: block;
+}
