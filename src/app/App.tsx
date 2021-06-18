@@ -9,32 +9,34 @@ import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 
 import BlindsendLogo from '../images/blindsend.svg'
-
-import * as ReceiveFileScreen from './request/GetLink'
-import * as MainNavigation from './MainNavigation'
+import { promiseToCmd } from './helpers'
+import * as MainNavigation from './components/MainNavigation'
 import * as Footer from './components/Footer'
 import * as LegalLinks from './legal/LegalLinks'
 import * as PrivacyPolicy from './legal/PrivacyPolicy'
 import * as LegalMentions from './legal/LegalMentions'
 import * as TermsAndConditions from './legal/TermsAndCondidions'
 
+import * as GetLink from './request/GetLink'
+import * as ExchangeLink from './request/ExchangeLink'
+
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
-type ReceiveFileScreenMsg = { type: 'ReceiveFileScreenMsg', msg: ReceiveFileScreen.Msg }
+type GetLinkMsg = { type: 'GetLinkMsg', msg: GetLink.Msg }
+type ExchangeLinkMsg = { type: 'ExchangeLinkMsg', msg: ExchangeLink.Msg }
 
 type Msg =
   | InitializedLibsodium
-  | ReceiveFileScreenMsg
+  | GetLinkMsg
+  | ExchangeLinkMsg
+
+type InitializedModel =
+  | { type: 'Ready', screen: { type: 'GetLink', model: GetLink.Model } }
+  | { type: 'Ready', screen: { type: 'ExchangeLink', model: ExchangeLink.Model } }
 
 type Model =
   | { type: 'Loading' }
-  | { type: 'Ready', receiveFileScreenModel: ReceiveFileScreen.Model }
+  | InitializedModel
 
-function promiseToCmd<A, M>(promise: Promise<A>, f: (a: A) => M): cmd.Cmd<M> {
-  return pipe(
-    () => promise,
-    perform(f)
-  )
-}
 
 const init: () => [Model, cmd.Cmd<Msg>] = () =>
   [
@@ -45,23 +47,52 @@ const init: () => [Model, cmd.Cmd<Msg>] = () =>
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'InitializedLibsodium': {
-      const [receiveFileScreenModel, receiveFileScreenCmd] = ReceiveFileScreen.init()
+      const [getLinkModel, getLinkCmd] = GetLink.init()
 
       return [
-        { type: 'Ready', receiveFileScreenModel },
+        { type: 'Ready', screen: { type: 'GetLink', model: getLinkModel } },
         cmd.batch([
-          cmd.map<ReceiveFileScreen.Msg, Msg>(msg => ({ type: 'ReceiveFileScreenMsg', msg }))(receiveFileScreenCmd)
+          cmd.map<GetLink.Msg, Msg>(msg => ({ type: 'GetLinkMsg', msg }))(getLinkCmd)
         ])
       ]
     }
-    case 'ReceiveFileScreenMsg': {
-      if (model.type != 'Ready') throw new Error('')
+    case 'GetLinkMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'GetLink') throw new Error('wrong state')
 
-      const [receiveFileScreenModel, receiveFileScreenCmd] = ReceiveFileScreen.update(msg.msg, model.receiveFileScreenModel)
+      if (msg.msg.type === 'Finish') {
+        const link = `localhost:9000#${msg.msg.linkId};${msg.msg.publicKey}`
+        const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link, msg.msg.passwordless)
+
+        return [
+          { type: 'Ready', screen: { type: 'ExchangeLink', model: exchangeLinkModel } },
+          cmd.map<ExchangeLink.Msg, Msg>(msg => ({ type: 'ExchangeLinkMsg', msg }))(exchangeLinkCmd)
+        ]
+      }
+
+      const [getLinkModel, getLinkCmd] = GetLink.update(msg.msg, model.screen.model)
 
       return [
-        { ...model, receiveFileScreenModel },
-        cmd.map<ReceiveFileScreen.Msg, Msg>(msg => ({ type: 'ReceiveFileScreenMsg', msg }))(receiveFileScreenCmd)
+        { ...model, screen: { ...model.screen, model: getLinkModel } },
+        cmd.map<GetLink.Msg, Msg>(msg => ({ type: 'GetLinkMsg', msg }))(getLinkCmd)
+      ]
+    }
+    case 'ExchangeLinkMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'ExchangeLink') throw new Error('wrong state')
+
+      if (msg.msg.type === 'GoBack') {
+        const [getLinkModel, getLinkCmd] = GetLink.init()
+
+        return [
+          { type: 'Ready', screen: { type: 'GetLink', model: getLinkModel } },
+          cmd.map<GetLink.Msg, Msg>(msg => ({ type: 'GetLinkMsg', msg }))(getLinkCmd)
+        ]
+      }
+
+      const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.update(msg.msg, model.screen.model)
+
+      return [
+        { ...model, screen: { ...model.screen, model: exchangeLinkModel } },
+        cmd.map<ExchangeLink.Msg, Msg>(msg => ({ type: 'ExchangeLinkMsg', msg }))(exchangeLinkCmd)
       ]
     }
   }
@@ -75,7 +106,14 @@ function view(model: Model): Html<Msg> {
       return <div>Initializing</div>
     }
 
-    function renderRequest(model: ReceiveFileScreen.Model) {
+    function renderRequest(model: InitializedModel) {
+
+      function renderScreen() {
+        switch (model.screen.type) {
+          case 'GetLink': return GetLink.view(model.screen.model)(msg => dispatch({ type: 'GetLinkMsg', msg }))
+          case 'ExchangeLink': return ExchangeLink.view(model.screen.model)(msg => dispatch({ type: 'ExchangeLinkMsg', msg }))
+        }
+      }
 
       return (
         <div className="site-page">
@@ -99,7 +137,7 @@ function view(model: Model): Html<Msg> {
               </div>
             </header>
 
-            {ReceiveFileScreen.view(model)(msg => dispatch({ type: 'ReceiveFileScreenMsg', msg }))}
+            {renderScreen()}
 
             {Footer.view()(dispatch)}
 
@@ -114,7 +152,7 @@ function view(model: Model): Html<Msg> {
 
     switch (model.type) {
       case 'Loading': return renderInitializing()
-      case 'Ready': return renderRequest(model.receiveFileScreenModel)
+      case 'Ready': return renderRequest(model)
     }
   }
 

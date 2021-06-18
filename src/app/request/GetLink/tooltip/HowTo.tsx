@@ -3,7 +3,7 @@ import { Html } from 'elm-ts/lib/React'
 import SwiperCore, { Pagination } from 'swiper'
 import { Swiper, SwiperSlide } from 'swiper/react'
 
-import ThinkEmoji from '../../../images/think-emoji.svg'
+import ThinkEmoji from '../../../../images/think-emoji.svg'
 
 SwiperCore.use([Pagination])
 

@@ -3,7 +3,7 @@ import { Html } from 'elm-ts/lib/React'
 import SwiperCore, { Pagination } from 'swiper'
 import { Swiper, SwiperSlide } from 'swiper/react'
 
-import StrongEmoji from '../../../images/strong.svg'
+import StrongEmoji from '../../../../images/strong.svg'
 
 SwiperCore.use([Pagination])
 

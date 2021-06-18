@@ -26,25 +26,19 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 }
 
 const view = (model: Model): Html<Msg> => dispatch => (
-  <div className="main-password__form">
-    <div className="main-password__input-wrap">
-      <input
-        type={model.hidden ? "password" : "text"}
-        placeholder="Type password"
-        id="myInput"
-        className="main-input main-password__input"
-        value={model.value}
-        onChange={e => dispatch({ type: 'ChangePassword', value: e.target.value })}
-      />
-      <span
-        className={model.hidden ? "main-password-btn font-password-show" : "main-password-btn font-password-hide"}
-        onClick={e => dispatch({ type: 'ToggleHidden' })}
-      ></span>
-    </div>
-    <div className="btn-wrap">
-      <input type="submit" className="main-password__submit btn" value="generate Link" />
-      <span className="btn-animation"></span>
-    </div>
+  <div className="main-password__input-wrap">
+    <input
+      type={model.hidden ? "password" : "text"}
+      placeholder="Type password"
+      id="myInput"
+      className="main-input main-password__input"
+      value={model.value}
+      onChange={e => dispatch({ type: 'ChangePassword', value: e.target.value })}
+    />
+    <span
+      className={model.hidden ? "main-password-btn font-password-show" : "main-password-btn font-password-hide"}
+      onClick={e => dispatch({ type: 'ToggleHidden' })}
+    ></span>
   </div>
 )
 
