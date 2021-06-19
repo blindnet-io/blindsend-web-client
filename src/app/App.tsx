@@ -17,26 +17,103 @@ import * as PrivacyPolicy from './legal/PrivacyPolicy'
 import * as LegalMentions from './legal/LegalMentions'
 import * as TermsAndConditions from './legal/TermsAndCondidions'
 
+import { fromCodec } from './helpers'
 import * as GetLink from './request/GetLink'
 import * as ExchangeLink from './request/ExchangeLink'
+import * as UploadFiles from './request/UploadFiles'
 
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
+type FailBadLink = { type: 'FailBadLink' }
+type FailGetStatus = { type: 'FailGetStatus' }
+type GotStatus = { type: 'GotStatus', status: number, uploadConstraints: UploadFiles.Constraints }
+
 type GetLinkMsg = { type: 'GetLinkMsg', msg: GetLink.Msg }
 type ExchangeLinkMsg = { type: 'ExchangeLinkMsg', msg: ExchangeLink.Msg }
+type UploadFilesMsg = { type: 'UploadFilesMsg', msg: UploadFiles.Msg }
 
 type Msg =
   | InitializedLibsodium
   | GetLinkMsg
   | ExchangeLinkMsg
+  | UploadFilesMsg
+  | FailBadLink
+  | FailGetStatus
+  | GotStatus
 
 type InitializedModel =
   | { type: 'Ready', screen: { type: 'GetLink', model: GetLink.Model } }
   | { type: 'Ready', screen: { type: 'ExchangeLink', model: ExchangeLink.Model } }
+  | { type: 'Ready', screen: { type: 'UploadFiles', model: UploadFiles.Model } }
 
 type Model =
-  | { type: 'Loading' }
+  | { type: 'Loading', linkData?: { linkId: string, key: string } }
   | InitializedModel
 
+
+// function getLinkData(): cmd.Cmd<Msg> {
+
+//   const getLinkId = () => {
+//     if (window.location.pathname === '/request' || window.location.pathname === '/request/')
+//       return Opt.none
+//     else {
+//       const linkId = window.location.pathname.substring(9)
+//       const pk1 = window.location.hash.substring(1)
+//       return Opt.some({ linkId, pk1 })
+//     }
+//   }
+
+//   return pipe(
+//     fromIO(getLinkId),
+//     perform(linkData => ({ type: 'GotLinkData', linkData }))
+//   )
+// }
+
+function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
+
+  type Resp = {
+    status: number,
+    upload_constraints: {
+      num_of_files: number,
+      total_size: number,
+      single_size: number
+    }
+  }
+  const schema = t.interface({
+    status: t.number,
+    upload_constraints: t.interface({
+      num_of_files: t.number,
+      total_size: t.number,
+      single_size: t.number
+    })
+  })
+  const req = {
+    ...http.get(`http://localhost:9000/link-status/${linkId}`, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  return http.send<Resp, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, Resp, Msg>(
+        e => {
+          if (e._tag === 'BadStatus')
+            return ({ type: 'FailBadLink' })
+          else
+            return ({ type: 'FailGetStatus' })
+        },
+        resp => ({
+          type: 'GotStatus',
+          status: resp.status,
+          uploadConstraints: {
+            numOfFiles: resp.upload_constraints.num_of_files,
+            totalSize: resp.upload_constraints.total_size,
+            singleSize: resp.upload_constraints.single_size
+          }
+        })
+      )
+    )
+  )(req)
+}
 
 const init: () => [Model, cmd.Cmd<Msg>] = () =>
   [
@@ -47,6 +124,17 @@ const init: () => [Model, cmd.Cmd<Msg>] = () =>
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'InitializedLibsodium': {
+
+      const [linkIdWithHash, key] = window.location.hash.split(';')
+      const linkId = linkIdWithHash.substr(1)
+
+      if (linkId != null && key != null) {
+        return [
+          { ...model, linkData: { linkId, key } },
+          getLinkStatus(linkId)
+        ]
+      }
+
       const [getLinkModel, getLinkCmd] = GetLink.init()
 
       return [
@@ -56,11 +144,43 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         ])
       ]
     }
+    case 'FailBadLink': {
+      // TODO
+      return [model, cmd.none]
+    }
+    case 'FailGetStatus': {
+      // TODO
+      return [model, cmd.none]
+    }
+    case 'GotStatus': {
+      switch (msg.status) {
+        case 1: {
+          if (model.type != 'Loading' || model.linkData == undefined)
+            throw new Error('unexpected state')
+
+          const [uploadFilesModel, uploadFilesCmd] = UploadFiles.init(model.linkData.linkId, sodium.from_base64(model.linkData.key), msg.uploadConstraints)
+
+          return [
+            { type: 'Ready', screen: { type: 'UploadFiles', model: uploadFilesModel } },
+            cmd.batch([
+              cmd.map<UploadFiles.Msg, Msg>(msg => ({ type: 'UploadFilesMsg', msg }))(uploadFilesCmd)
+            ])
+          ]
+        }
+        case 2: {
+          // TODO
+          return [model, cmd.none]
+        }
+        default:
+          throw new Error('undexpected link status')
+      }
+    }
+
     case 'GetLinkMsg': {
       if (model.type != 'Ready' || model.screen.type != 'GetLink') throw new Error('wrong state')
 
       if (msg.msg.type === 'Finish') {
-        const link = `localhost:9000#${msg.msg.linkId};${msg.msg.publicKey}`
+        const link = `localhost:8080#${msg.msg.linkId};${msg.msg.publicKey}`
         const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link, msg.msg.passwordless)
 
         return [
@@ -95,6 +215,16 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         cmd.map<ExchangeLink.Msg, Msg>(msg => ({ type: 'ExchangeLinkMsg', msg }))(exchangeLinkCmd)
       ]
     }
+    case 'UploadFilesMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'UploadFiles') throw new Error('wrong state')
+
+      const [uploadFilesModel, uploadFilesCmd] = UploadFiles.update(msg.msg, model.screen.model)
+
+      return [
+        { ...model, screen: { ...model.screen, model: uploadFilesModel } },
+        cmd.map<UploadFiles.Msg, Msg>(msg => ({ type: 'UploadFilesMsg', msg }))(uploadFilesCmd)
+      ]
+    }
   }
 }
 
@@ -112,6 +242,7 @@ function view(model: Model): Html<Msg> {
         switch (model.screen.type) {
           case 'GetLink': return GetLink.view(model.screen.model)(msg => dispatch({ type: 'GetLinkMsg', msg }))
           case 'ExchangeLink': return ExchangeLink.view(model.screen.model)(msg => dispatch({ type: 'ExchangeLinkMsg', msg }))
+          case 'UploadFiles': return UploadFiles.view(model.screen.model)(msg => dispatch({ type: 'UploadFilesMsg', msg }))
         }
       }
 

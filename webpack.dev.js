@@ -35,14 +35,12 @@ module.exports = merge(common, {
     new HtmlWebpackPlugin({
       template: './src/html/template.ejs',
       base: '/',
-      sodiumInject: '<script src="js/sodium.js"></script>',
-      animationsInject: '<script src="js/animations.js"></script>'
+      sodiumInject: '<script src="js/sodium.js"></script>'
     }),
     new CopyPlugin({
       patterns: [
         { from: './src/images/favicon.ico', to: 'images/favicon.ico' },
         { from: './src/libs/sodium.js', to: 'js/sodium.js' },
-        { from: './src/libs/animations.js', to: 'js/animations.js' },
         // { from: './src/libs/mitm', to: 'mitm' },
       ],
     }),

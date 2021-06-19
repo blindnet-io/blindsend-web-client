@@ -190,7 +190,7 @@
   }
 
   &.large-file {
-    color: rgba(41, 43, 46, 0.3);
+    color: rgba(41, 43, 46, 0.4);
 
     .main-drop__file-bar {
       width: 100%;
@@ -198,7 +198,9 @@
     }
 
     .main-drop__file-bar-status {
-      display: none;
+      .main-drop__file-cross {
+        display: none;
+      }
     }
   }
 }
