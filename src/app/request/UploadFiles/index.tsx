@@ -121,7 +121,13 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       }, cmd.none]
     }
     case 'Upload': {
-      return [model, cmd.none]
+      return [
+        {
+          ...model,
+          uploading: true
+        },
+        cmd.none
+      ]
     }
 
     case 'LeftPanelMsg': {
@@ -210,9 +216,16 @@ const view = (model: Model): Html<Msg> => dispatch => {
                 }}>BROWSE</a>
               </span>
 
-              <div className="btn-wrap">
-                <input type="submit" className="main-drop__submit btn" value="send" />
-                <span className="btn-animation"></span>
+              <div className={model.uploading ? "btn-wrap disabled" : "btn-wrap"}>
+                <input
+                  type="submit"
+                  className="btn"
+                  style={model.uploading ? { pointerEvents: 'none' } : {}}
+                  value="send"
+                  disabled={model.uploading}
+                  onClick={() => dispatch({ type: 'Upload' })}
+                />
+                <span className={model.uploading ? "btn-animation sending" : "btn-animation btn"}></span>
               </div>
 
               <input hidden type='file' multiple id='file-pick' onChange={e => dispatch({ type: 'AddFiles', files: [...e.target.files || []] })} />

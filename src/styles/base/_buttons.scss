@@ -112,6 +112,21 @@
     transition: $dur $ease;
     opacity: 0;
   }
+
+  &.disabled {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      left: 2px;
+      right: 2px;
+      background: none;
+      border-radius: 8px;
+      transition: $dur $ease;
+      opacity: 0;
+    }
+  }
 }
 
 @keyframes rotate {

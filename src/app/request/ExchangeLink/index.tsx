@@ -3,8 +3,6 @@ import { cmd } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 
 import * as LeftPanel from '../components/LeftPanel'
-import BlindsendLogo from '../../../images/blindsend.svg'
-import * as LegalLinks from '../../legal/LegalLinks'
 import * as HowToTooltip from './tooltip/HowTo'
 import * as PasswordlessTooltip from './tooltip/Passwordless'
 import * as CopiedTooltip from './tooltip/Copied'

@@ -221,10 +221,11 @@ const view = (model: Model): Html<Msg> => dispatch => {
               <h2 className="main-password__title section-title">Set Password</h2>
               <div className="main-password__form">
                 {PasswordField.view(model.passFieldModel)(msg => dispatch({ type: 'PasswordFieldMsg', msg }))}
-                <div className="btn-wrap">
+                <div className={model.loading ? "btn-wrap disabled" : "btn-wrap"}>
                   <input
                     type="submit"
                     className="main-password__submit btn"
+                    style={model.loading ? { pointerEvents: 'none' } : {}}
                     value="generate Link"
                     onClick={() => dispatch({ type: 'GenerateLink' })}
                     disabled={model.loading}
