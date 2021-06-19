@@ -10,17 +10,15 @@ import * as sodium from 'libsodium-wrappers'
 import * as keyval from 'idb-keyval'
 
 import { fromCodec, promiseToCmd } from '../../helpers'
-import BlindsendLogo from '../../../images/blindsend.svg'
 import * as PasswordField from '../../components/PasswordField'
-import * as LegalLinks from '../../legal/LegalLinks'
+import * as LeftPanel from '../components/LeftPanel'
 import * as HowToTooltip from './tooltip/HowTo'
 import * as WeakPassTooltip from './tooltip/WeakPassword'
 import * as StrongPassTooltip from './tooltip/StrongPassword'
 
 type PasswordFieldMsg = { type: 'PasswordFieldMsg', msg: PasswordField.Msg }
+type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 
-type SwitchToSend = { type: 'SwitchToSend' }
-type SwitchToReceive = { type: 'SwitchToReceive' }
 type GenerateLink = { type: 'GenerateLink' }
 type GenerateLinkPasswordless = { type: 'GenerateLinkPasswordless' }
 type EstimatePass = { type: 'EstimatePass' }
@@ -32,8 +30,7 @@ type Finish = { type: 'Finish', linkId: string, publicKey: string, passwordless:
 
 type Msg =
   | PasswordFieldMsg
-  | SwitchToSend
-  | SwitchToReceive
+  | LeftPanelMsg
   | GenerateLink
   | GenerateLinkPasswordless
   | EstimatePass
@@ -45,6 +42,7 @@ type Msg =
 
 type Model = {
   passFieldModel: PasswordField.Model,
+  leftPanelModel: LeftPanel.Model,
   passStrength: {
     estimated: boolean,
     n: number
@@ -80,11 +78,13 @@ function getLink(salt?: Uint8Array): cmd.Cmd<Msg> {
 
 const init: () => [Model, cmd.Cmd<Msg>] = () => {
   const [passFieldModel, passFieldCmd] = PasswordField.init
+  const [leftPanelModel, leftPanelCmd] = LeftPanel.init(1)
 
   return [
-    { passFieldModel, passStrength: { estimated: false, n: 0 }, loading: false },
+    { passFieldModel, leftPanelModel, passStrength: { estimated: false, n: 0 }, loading: false },
     cmd.batch([
       cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
+      cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
     ])
   ]
 }
@@ -116,6 +116,11 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd)
         ]
     }
+    case 'LeftPanelMsg': {
+      const [leftPanelModel, leftPanelCmd] = LeftPanel.update(msg.msg, model.leftPanelModel)
+
+      return [model, cmd.none]
+    }
     case 'EstimatePass': {
       if (model.passStrength.estimated)
         return [model, cmd.none]
@@ -123,12 +128,6 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         return [{ ...model, passStrength: { estimated: false, n: model.passStrength.n - 1 } }, cmd.none]
       else
         return [{ ...model, passStrength: { estimated: true, n: 0 } }, cmd.none]
-    }
-    case 'SwitchToReceive': {
-      return [model, cmd.none]
-    }
-    case 'SwitchToSend': {
-      return [model, cmd.none]
     }
     case 'GenerateLink': {
       // 16 bytes
@@ -213,24 +212,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
   return (
     <div className="site-page__row row">
 
-      <div className="site-nav__wrap col-lg-2">
-        <div className="site-nav">
-          <div className="site-nav__img">
-            <img src={BlindsendLogo} alt="" />
-          </div>
-          <div className="site-tabs__wrap">
-            <div className="site-tabs site-tabs--send" onClick={() => dispatch({ type: 'SwitchToSend' })}>send</div>
-            <div className="site-tabs site-tabs--recieve active" onClick={() => dispatch({ type: 'SwitchToReceive' })}>receive</div>
-          </div>
-          <ul id="primary-menu" className="primary-menu">
-            <li className="menu-item active"><span className="menu-item-number">1</span><span className="menu-item-title">Pick <br /> Password</span></li>
-            <li className="menu-item"><span className="menu-item-number">2</span><span className="menu-item-title">Exchange <br /> Link</span></li>
-            <li className="menu-item"><span className="menu-item-number">3</span><span className="menu-item-title">Sender <br /> Upload</span></li>
-            <li className="menu-item"><span className="menu-item-number">4</span><span className="menu-item-title">Download</span></li>
-          </ul>
-        </div>
-        {LegalLinks.view()(dispatch)}
-      </div>
+      {LeftPanel.view(model.leftPanelModel)(msg => dispatch({ type: 'LeftPanelMsg', msg }))}
 
       <div className="site-main__wrap col-lg-7">
         <div className="site-main">

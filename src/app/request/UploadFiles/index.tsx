@@ -10,6 +10,7 @@ import * as sodium from 'libsodium-wrappers'
 import * as keyval from 'idb-keyval'
 import filesize from 'filesize'
 
+import * as LeftPanel from '../components/LeftPanel'
 import { fromCodec, promiseToCmd } from '../../helpers'
 import BlindsendLogo from '../../../images/blindsend.svg'
 import * as LegalLinks from '../../legal/LegalLinks'
@@ -23,11 +24,13 @@ import * as FileRow from './components/File'
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
 
+type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
 
 type Msg =
   | AddFiles
   | Upload
+  | LeftPanelMsg
   | FileMsg
 
 type Constraints = {
@@ -37,6 +40,7 @@ type Constraints = {
 }
 
 type Model = {
+  leftPanelModel: LeftPanel.Model,
   files: {
     file: File,
     id: string,
@@ -67,9 +71,12 @@ const init: (
   constraints: Constraints
 ) => [Model, cmd.Cmd<Msg>] = (linkId, reqPublicKey, constraints) => {
 
+  const [leftPanelModel, leftPanelCmd] = LeftPanel.init(3)
+
   return [
     {
       files: [],
+      leftPanelModel,
       totalSize: 0,
       uploading: false,
       linkId,
@@ -79,7 +86,9 @@ const init: (
       renderTooManyFiles: false,
       renderTotalSizeTooBig: false
     },
-    cmd.none
+    cmd.batch([
+      cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
+    ])
   ]
 }
 
@@ -115,6 +124,11 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       return [model, cmd.none]
     }
 
+    case 'LeftPanelMsg': {
+      const [leftPanelModel, leftPanelCmd] = LeftPanel.update(msg.msg, model.leftPanelModel)
+
+      return [model, cmd.none]
+    }
     case 'FileMsg': {
       if (msg.msg.type === 'Remove') {
         const files = model.files.filter(file => file.id != msg.msg.id)
@@ -149,40 +163,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
   return (
     <div className="site-page__row row">
 
-      <div className="site-nav__wrap col-lg-2">
-        <div className="site-nav">
-          <div className="site-nav__img">
-            <img src={BlindsendLogo} alt="" />
-          </div>
-          <ul id="primary-menu" className="primary-menu">
-            <li className="menu-item active complete">
-              <span className="menu-item-number"><svg width="21" height="16" viewBox="0 0 21 16" fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M7.84297 15.5976C7.64741 15.7942 7.38073 15.904 7.10359 15.904C6.82645 15.904 6.55978 15.7942 6.36421 15.5976L0.459629 9.69194C-0.15321 9.07911 -0.15321 8.0856 0.459629 7.4738L1.19901 6.73442C1.81185 6.12159 2.80431 6.12159 3.41715 6.73442L7.10359 10.4209L17.0648 0.459629C17.6777 -0.15321 18.6712 -0.15321 19.283 0.459629L20.0224 1.19901C20.6352 1.81185 20.6352 2.80536 20.0224 3.41715L7.84297 15.5976Z"
-                  fill="white" />
-              </svg>
-              </span>
-              <span className="menu-item-title">Pick <br /> Password</span>
-            </li>
-            <li className="menu-item active complete">
-              <span className="menu-item-number"><svg width="21" height="16" viewBox="0 0 21 16" fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M7.84297 15.5976C7.64741 15.7942 7.38073 15.904 7.10359 15.904C6.82645 15.904 6.55978 15.7942 6.36421 15.5976L0.459629 9.69194C-0.15321 9.07911 -0.15321 8.0856 0.459629 7.4738L1.19901 6.73442C1.81185 6.12159 2.80431 6.12159 3.41715 6.73442L7.10359 10.4209L17.0648 0.459629C17.6777 -0.15321 18.6712 -0.15321 19.283 0.459629L20.0224 1.19901C20.6352 1.81185 20.6352 2.80536 20.0224 3.41715L7.84297 15.5976Z"
-                  fill="white" />
-              </svg>
-              </span>
-              <span className="menu-item-title">Exchange <br /> Link</span>
-            </li>
-            <li className="menu-item active"><span className="menu-item-number">3</span><span className="menu-item-title">Sender
-                  <br /> Upload</span></li>
-            <li className="menu-item"><span className="menu-item-number">4</span><span className="menu-item-title">Download</span>
-            </li>
-          </ul>
-        </div>
-        {LegalLinks.view()(dispatch)}
-      </div>
+      {LeftPanel.view(model.leftPanelModel)(msg => dispatch({ type: 'LeftPanelMsg', msg }))}
 
       <div className="site-main__wrap col-lg-7">
         <div className="site-main">
