@@ -19,7 +19,7 @@ const view = (): Html<any> => _ => {
     >
       <SwiperSlide>
         <p className="tooltip__content-text">Drop your files here. When you are ready, click “<b>SEND</b>” and the magic will happen.</p>
-        <p className="tooltip__content-text">Your files will be end-to-end encrypted from your machine, and delivered to the received.</p>
+        <p className="tooltip__content-text">Your files will be end-to-end encrypted from your machine, and delivered to the receiver.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -28,7 +28,7 @@ const view = (): Html<any> => _ => {
       <div className="tooltip__content">
         <div className="tooltip__slide">
           <p className="tooltip__content-text">Drop your files here. When you are ready, click “<b>SEND</b>” and the magic will happen.</p>
-          <p className="tooltip__content-text">Your files will be end-to-end encrypted from your machine, and delivered to the received.</p>
+          <p className="tooltip__content-text">Your files will be end-to-end encrypted from your machine, and delivered to the receiver.</p>
         </div>
       </div>
     </div>

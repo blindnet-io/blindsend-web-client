@@ -15,12 +15,12 @@ const update = (msg: Msg, model: any): [any, cmd.Cmd<Msg>] => {
   }
 }
 
-const view = (id: string, name: string, size: number, progress: number, tooBig: boolean, disabled: boolean): Html<Msg> => dispatch =>
+const view = (id: string, name: string, size: number, progress: number, complete: boolean, tooBig: boolean, disabled: boolean): Html<Msg> => dispatch =>
   <div className={tooBig ? "main-drop__file large-file" : "main-drop__file"} key={id}>
     <span className="main-drop__file-name">
       {name.length > 40 ? `${name.slice(0, 35)}...${name.slice(-5)}` : name}
     </span>
-    <span className="main-drop__file-bar" style={tooBig ? {} : { width: `${progress}%` }}></span>
+    <span className="main-drop__file-bar" style={tooBig ? {} : { width: `${complete ? 100 : progress}%` }}></span>
     <div className="main-drop__file-bar-status">
       <span className="main-drop__file-bar-status-text">{filesize(size)}</span>
       {
