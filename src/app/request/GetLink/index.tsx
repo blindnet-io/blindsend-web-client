@@ -53,12 +53,12 @@ type Model = {
   linkId?: string
 }
 
-function getLink(salt?: Uint8Array): cmd.Cmd<Msg> {
+function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uint8Array }): cmd.Cmd<Msg> {
 
   type Resp = { link_id: string }
 
   const schema = t.interface({ link_id: t.string })
-  const body = salt ? { salt: sodium.to_base64(salt), passwordless: false } : { passwordless: true }
+  const body = input.type === 'Password' ? { salt: sodium.to_base64(input.salt), passwordless: false } : { passwordless: true }
 
   const req = {
     ...http.post(`http://localhost:9000/request/get-link`, body, fromCodec(schema)),
@@ -70,7 +70,7 @@ function getLink(salt?: Uint8Array): cmd.Cmd<Msg> {
       result,
       E.fold<http.HttpError, Resp, Msg>(
         _ => ({ type: 'FailGetLink' }),
-        resp => ({ type: salt ? 'GotLink' : 'GotLinkPasswordless', linkId: resp.link_id })
+        resp => ({ type: input.type === 'Password' ? 'GotLink' : 'GotLinkPasswordless', linkId: resp.link_id })
       )
     )
   )(req)
@@ -146,7 +146,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       // X25519, 2x 32 bytes
       const { publicKey } = sodium.crypto_kx_seed_keypair(seed)
 
-      return [{ ...model, loading: true, publicKey }, getLink(salt)]
+      return [{ ...model, loading: true, publicKey }, getLink({ type: 'Password', salt })]
     }
     case 'GotLink': {
       if (model.publicKey) {
@@ -161,7 +161,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       const seed = sodium.randombytes_buf(sodium.crypto_kx_SEEDBYTES)
       const { publicKey } = sodium.crypto_kx_seed_keypair(seed)
 
-      return [{ ...model, loading: true, publicKey, seed }, getLink()]
+      return [{ ...model, loading: true, publicKey, seed }, getLink({ type: 'Passwordless' })]
     }
     case 'GotLinkPasswordless': {
       if (model.seed) {

@@ -11,7 +11,7 @@ import * as keyval from 'idb-keyval'
 import filesize from 'filesize'
 
 import * as LeftPanel from '../components/LeftPanel'
-import { fromCodec, promiseToCmd } from '../../helpers'
+import { fromCodec, promiseToCmd, uuidv4 } from '../../helpers'
 import BlindsendLogo from '../../../images/blindsend.svg'
 import * as LegalLinks from '../../legal/LegalLinks'
 import * as HowToTooltip from './tooltip/HowTo'
@@ -23,6 +23,8 @@ import * as FileRow from './components/File'
 
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
+type FailStoreMetadata = { type: 'FailStoreMetadata' }
+type StoredMetadata = { type: 'StoredMetadata', links: { id: string, link: string }[] }
 
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
@@ -30,6 +32,8 @@ type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
 type Msg =
   | AddFiles
   | Upload
+  | FailStoreMetadata
+  | StoredMetadata
   | LeftPanelMsg
   | FileMsg
 
@@ -53,16 +57,40 @@ type Model = {
   linkId: string,
   reqPublicKey: Uint8Array,
   constraints: Constraints,
-  renderFileTooBig: boolean,
-  renderTooManyFiles: boolean,
-  renderTotalSizeTooBig: boolean,
+  renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig',
+  uploadLinks?: { id: string, link: string }[]
 }
 
-function uuidv4() {
-  // @ts-ignore
-  return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
-    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-  );
+function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
+  var tmp = new Uint8Array(arr1.byteLength + arr2.byteLength);
+  tmp.set(arr1, 0)
+  tmp.set(arr2, arr1.byteLength)
+  return tmp;
+}
+
+function storeMetadata(encryptedMetadata: Uint8Array, fileIds: string[], linkId: string): cmd.Cmd<Msg> {
+
+  type Resp = { upload_links: { id: string, link: string }[] }
+
+  const schema = t.interface({
+    upload_links: t.array(t.interface({ id: t.string, link: t.string }))
+  })
+  const body = { encryptedMetadata: sodium.to_base64(encryptedMetadata), fileIds, linkId }
+
+  const req = {
+    ...http.post(`http://localhost:9000/request/store-metadata`, body, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  return http.send<Resp, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, Resp, Msg>(
+        _ => ({ type: 'FailStoreMetadata' }),
+        resp => ({ type: 'StoredMetadata', links: resp.upload_links })
+      )
+    )
+  )(req)
 }
 
 const init: (
@@ -82,9 +110,7 @@ const init: (
       linkId,
       reqPublicKey,
       constraints,
-      renderFileTooBig: false,
-      renderTooManyFiles: false,
-      renderTotalSizeTooBig: false
+      renderError: false
     },
     cmd.batch([
       cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
@@ -92,21 +118,19 @@ const init: (
   ]
 }
 
-const removeWarnings = { renderFileTooBig: false, renderTooManyFiles: false, renderTotalSizeTooBig: false }
-
 const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
   switch (msg.type) {
     case 'AddFiles': {
       if (msg.files.length + model.files.filter(f => !f.tooBig).length > model.constraints.numOfFiles) {
-        return [{ ...model, ...removeWarnings, renderTooManyFiles: true }, cmd.none]
+        return [{ ...model, renderError: 'TooManyFiles' }, cmd.none]
       }
       if ((msg.files.length > 1 || model.files.length > 0) && msg.files.reduce((acc, cur) => acc + cur.size, 0) + model.totalSize > model.constraints.totalSize)
-        return [{ ...model, ...removeWarnings, renderTotalSizeTooBig: true }, cmd.none]
+        return [{ ...model, renderError: 'TotalSizeTooBig' }, cmd.none]
 
-      let renderTooBig = false
+      let renderTooBig: false | 'FileTooBig' = false
       const newFiles = msg.files.map(file => {
         const tooBig = file.size > model.constraints.singleSize
-        if (tooBig) renderTooBig = true
+        if (tooBig) renderTooBig = 'FileTooBig'
 
         return { file, id: uuidv4(), progress: 0, complete: false, tooBig }
       })
@@ -116,18 +140,52 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         ...model,
         files,
         totalSize: files.reduce((acc, cur) => acc + (cur.tooBig ? 0 : cur.file.size), 0),
-        ...removeWarnings,
-        renderFileTooBig: renderTooBig
+        renderError: renderTooBig
       }, cmd.none]
     }
     case 'Upload': {
+
+      if (model.uploadLinks) {
+        // TODO
+        return [
+          model,
+          cmd.none
+        ]
+      }
+
+      // X25519, 2x 32 bytes
+      const { publicKey, privateKey } = sodium.crypto_kx_keypair()
+      const { sharedTx: masterKey } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, model.reqPublicKey)
+
+      const metadata = model.files.map(f => ({
+        name: f.file.name,
+        size: f.file.size,
+        id: f.id
+      }))
+
+      const iv = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES)
+
+      const encryptedMetadata = sodium.crypto_secretbox_easy(
+        new TextEncoder().encode((JSON.stringify(metadata))),
+        iv,
+        masterKey
+      )
+
       return [
         {
           ...model,
           uploading: true
         },
-        cmd.none
+        storeMetadata(concat(iv, encryptedMetadata), model.files.map(f => f.id), model.linkId)
       ]
+    }
+    case 'FailStoreMetadata': {
+      // TODO
+      return [{ ...model, uploading: false }, cmd.none]
+    }
+    case 'StoredMetadata': {
+      console.log(msg)
+      return [{ ...model, uploading: false, uploadLinks: msg.links }, cmd.none]
     }
 
     case 'LeftPanelMsg': {
@@ -142,7 +200,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           ...model,
           files,
           totalSize: files.reduce((acc, cur) => acc + (cur.tooBig ? 0 : cur.file.size), 0),
-          ...removeWarnings
+          renderError: false,
         }, cmd.none]
       }
 
@@ -156,14 +214,12 @@ const view = (model: Model): Html<Msg> => dispatch => {
   const noFiles = model.files.length === 0
 
   const renderTooltip = () => {
-    if (model.renderFileTooBig)
-      return FileTooBigTooltip.view(filesize(model.constraints.singleSize))(dispatch)
-    else if (model.renderTooManyFiles)
-      return TooManyFilesTooltip.view(model.constraints.numOfFiles)(dispatch)
-    else if (model.renderTotalSizeTooBig)
-      return TotalSizeTooBigTooltip.view(filesize(model.constraints.totalSize))(dispatch)
-    else
-      return HowToTooltip.view()(dispatch)
+    switch (model.renderError) {
+      case false: return HowToTooltip.view()(dispatch)
+      case 'FileTooBig': return FileTooBigTooltip.view(filesize(model.constraints.singleSize))(dispatch)
+      case 'TooManyFiles': return TooManyFilesTooltip.view(model.constraints.numOfFiles)(dispatch)
+      case 'TotalSizeTooBig': return TotalSizeTooBigTooltip.view(filesize(model.constraints.totalSize))(dispatch)
+    }
   }
 
   return (
@@ -181,17 +237,17 @@ const view = (model: Model): Html<Msg> => dispatch => {
                 className={noFiles ? "main-drop__file-wrap empty" : "main-drop__file-wrap"}
                 onDragOver={e => {
                   e.preventDefault()
-                  if (!model.uploading)
+                  if (!model.uploading && !model.uploadLinks)
                     document.querySelector('.main-drop__file-wrap')?.classList.add('drag')
                 }}
                 onDragLeave={e => {
                   e.preventDefault()
-                  if (!model.uploading)
+                  if (!model.uploading && !model.uploadLinks)
                     document.querySelector('.main-drop__file-wrap')?.classList.remove('drag')
                 }}
                 onDrop={e => {
                   e.preventDefault()
-                  if (!model.uploading) {
+                  if (!model.uploading && !model.uploadLinks) {
                     document.querySelector('.main-drop__file-wrap')?.classList.remove('drag')
                     dispatch({ type: 'AddFiles', files: [...e.dataTransfer.files] })
                   }
@@ -205,7 +261,10 @@ const view = (model: Model): Html<Msg> => dispatch => {
                       <span className="main-drop__file-msg-mob">Click here to attach file</span>
                     </div>
                   }
-                  {!noFiles && model.files.map(file => FileRow.view(file.id, file.file.name, file.file.size, file.progress, file.tooBig)(msg => dispatch({ type: 'FileMsg', msg })))}
+                  {!noFiles && model.files.map(file =>
+                    FileRow.view(file.id, file.file.name, file.file.size, file.progress, file.tooBig, model.uploading || model.uploadLinks != undefined)
+                      (msg => dispatch({ type: 'FileMsg', msg }))
+                  )}
                 </div>
               </div>
 
@@ -216,13 +275,13 @@ const view = (model: Model): Html<Msg> => dispatch => {
                 }}>BROWSE</a>
               </span>
 
-              <div className={model.uploading ? "btn-wrap disabled" : "btn-wrap"}>
+              <div className={model.uploading || model.files.length === 0 ? "btn-wrap disabled" : "btn-wrap"}>
                 <input
                   type="submit"
                   className="btn"
                   style={model.uploading ? { pointerEvents: 'none' } : {}}
                   value="send"
-                  disabled={model.uploading}
+                  disabled={model.uploading || model.files.length === 0}
                   onClick={() => dispatch({ type: 'Upload' })}
                 />
                 <span className={model.uploading ? "btn-animation sending" : "btn-animation btn"}></span>

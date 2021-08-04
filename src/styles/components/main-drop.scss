@@ -262,6 +262,21 @@
   }
 }
 
+.main-drop__file-cross-disabled {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 15px;
+  fill: $almost-grey;
+
+  @include mq($sm) {
+    font-size: 8px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
 .main-drop__file-remove-wrap {
   position: absolute;
   left: 0;
