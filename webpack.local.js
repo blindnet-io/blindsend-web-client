@@ -63,6 +63,7 @@ module.exports = merge(common, {
       base: '/',
       inlineSource: 'runtime~.+\\.js',
       sodiumInject: '<script src="js/sodium.js"></script>',
+      zipInject: '<script src="js/zip-stream.js"></script>',
       minify: false
     }),
     new InlineSourcePlugin(HtmlWebpackPlugin),
@@ -72,8 +73,9 @@ module.exports = merge(common, {
     }),
     new CopyPlugin({
       patterns: [
-        { from: './src/images/favicon.ico', to: 'images/favicon.ico' },
+        { from: './src/images/favicon.png', to: 'images/favicon.png' },
         { from: './src/libs/sodium', to: 'js/sodium.js' },
+        { from: './src/libs/zip-stream.js', to: 'js/zip-stream.js' },
         { from: './src/libs/mitm', to: 'mitm' },
       ],
     }),

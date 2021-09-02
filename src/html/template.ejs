@@ -6,18 +6,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <title>Blindsend</title>
-  <link rel='icon' href='images/favicon.ico' type='image/x-icon' />
-  <link rel='shortcut icon' href='images/favicon.ico' type='image/x-icon' />
+  <link rel='icon' href='images/favicon.png' type='image/x-icon' />
+  <link rel='shortcut icon' href='images/favicon.png' type='image/x-icon' />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
-
-  <%= htmlWebpackPlugin.options.sodiumInject %>
 
 </head>
 
 <body>
 
-  <div id="app"></div>
+  <%= htmlWebpackPlugin.options.zipInject %>
+  <%= htmlWebpackPlugin.options.sodiumInject %>
+
+    <script>
+      window.createZip = function createZip(files) {
+        return new ZIP({
+          start(ctrl) {
+            files.forEach(f => ctrl.enqueue({ name: f.name, stream: () => f.content }))
+          },
+          async pull(ctrl) {
+            ctrl.close()
+          }
+        })
+      }
+    </script>
+
+    <div id="app"></div>
 
 </body>
 

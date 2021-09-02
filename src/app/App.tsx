@@ -21,29 +21,42 @@ import { fromCodec } from './helpers'
 import * as GetLink from './request/GetLink'
 import * as ExchangeLink from './request/ExchangeLink'
 import * as UploadFiles from './request/UploadFiles'
+import * as DownloadFiles from './request/DownloadFiles'
 
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
 type FailBadLink = { type: 'FailBadLink' }
 type FailGetStatus = { type: 'FailGetStatus' }
-type GotStatus = { type: 'GotStatus', status: number, uploadConstraints: UploadFiles.Constraints }
+type GotStatus = { type: 'GotStatus', status: string, uploadConstraints: UploadFiles.Constraints }
+type GotMetadata = {
+  type: 'GotMetadata', metadata: {
+    encMetadata: string, keyHash: string, publicKey: string, salt: string, passwordless: boolean, numFiles: number
+  }
+}
+type FailGetMetadata = { type: 'FailGetMetadata' }
 
 type GetLinkMsg = { type: 'GetLinkMsg', msg: GetLink.Msg }
 type ExchangeLinkMsg = { type: 'ExchangeLinkMsg', msg: ExchangeLink.Msg }
 type UploadFilesMsg = { type: 'UploadFilesMsg', msg: UploadFiles.Msg }
+type DownloadFilesMsg = { type: 'DownloadFilesMsg', msg: DownloadFiles.Msg }
 
 type Msg =
   | InitializedLibsodium
-  | GetLinkMsg
-  | ExchangeLinkMsg
-  | UploadFilesMsg
   | FailBadLink
   | FailGetStatus
   | GotStatus
+  | GotMetadata
+  | FailGetMetadata
+
+  | GetLinkMsg
+  | ExchangeLinkMsg
+  | UploadFilesMsg
+  | DownloadFilesMsg
 
 type InitializedModel =
   | { type: 'Ready', screen: { type: 'GetLink', model: GetLink.Model } }
   | { type: 'Ready', screen: { type: 'ExchangeLink', model: ExchangeLink.Model } }
   | { type: 'Ready', screen: { type: 'UploadFiles', model: UploadFiles.Model } }
+  | { type: 'Ready', screen: { type: 'DownloadFiles', model: DownloadFiles.Model } }
 
 type Model =
   | { type: 'Loading', linkData?: { linkId: string, key: string } }
@@ -71,19 +84,19 @@ type Model =
 function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 
   type Resp = {
-    status: number,
+    status: string,
     upload_constraints: {
       num_of_files: number,
-      total_size: number,
-      single_size: number
+      total_size: string,
+      single_size: string
     }
   }
   const schema = t.interface({
-    status: t.number,
+    status: t.string,
     upload_constraints: t.interface({
       num_of_files: t.number,
-      total_size: t.number,
-      single_size: t.number
+      total_size: t.string,
+      single_size: t.string
     })
   })
   const req = {
@@ -106,9 +119,37 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
           status: resp.status,
           uploadConstraints: {
             numOfFiles: resp.upload_constraints.num_of_files,
-            totalSize: resp.upload_constraints.total_size,
-            singleSize: resp.upload_constraints.single_size
+            totalSize: parseInt(resp.upload_constraints.total_size),
+            singleSize: parseInt(resp.upload_constraints.single_size)
           }
+        })
+      )
+    )
+  )(req)
+}
+
+function getMetadata(linkId: string) {
+  type Resp = { enc_metadata: string, key_hash: string, public_key: string, salt: string, passwordless: boolean, num_files: number }
+
+  const schema = t.interface({
+    enc_metadata: t.string,
+    key_hash: t.string,
+    public_key: t.string,
+    salt: t.string,
+    passwordless: t.boolean,
+    num_files: t.number
+  })
+
+  const req = http.get(`http://localhost:9000/request/get-metadata/${linkId}`, fromCodec(schema))
+
+  return http.send<Resp, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, Resp, Msg>(
+        _ => ({ type: 'FailGetMetadata' }),
+        resp => ({
+          type: 'GotMetadata',
+          metadata: { encMetadata: resp.enc_metadata, keyHash: resp.key_hash, publicKey: resp.public_key, salt: resp.salt, passwordless: resp.passwordless, numFiles: resp.num_files }
         })
       )
     )
@@ -153,11 +194,11 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       return [model, cmd.none]
     }
     case 'GotStatus': {
-      switch (msg.status) {
-        case 1: {
-          if (model.type != 'Loading' || model.linkData == undefined)
-            throw new Error('unexpected state')
+      if (model.type != 'Loading' || model.linkData == undefined)
+        throw new Error('unexpected state')
 
+      switch (msg.status) {
+        case '1': {
           const [uploadFilesModel, uploadFilesCmd] = UploadFiles.init(model.linkData.linkId, sodium.from_base64(model.linkData.key), msg.uploadConstraints)
 
           return [
@@ -167,20 +208,50 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
             ])
           ]
         }
-        case 2: {
-          // TODO
-          return [model, cmd.none]
+        case '2': {
+          return [
+            model,
+            getMetadata(model.linkData.linkId),
+          ]
         }
         default:
           throw new Error('undexpected link status')
       }
+    }
+    case 'GotMetadata': {
+      if (model.type != 'Loading' || model.linkData == undefined)
+        throw new Error('unexpected state')
+
+      const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
+        model.linkData.linkId,
+        sodium.from_base64(model.linkData.key),
+        sodium.from_base64(msg.metadata.encMetadata),
+        sodium.from_base64(msg.metadata.keyHash),
+        sodium.from_base64(msg.metadata.publicKey),
+        sodium.from_base64(msg.metadata.salt),
+        msg.metadata.passwordless,
+        msg.metadata.numFiles
+      )
+
+      return [
+        { type: 'Ready', screen: { type: 'DownloadFiles', model: downloadFilesModel } },
+        cmd.batch([
+          cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
+        ])
+      ]
+    }
+    case 'FailGetMetadata': {
+      return [
+        model,
+        cmd.none
+      ]
     }
 
     case 'GetLinkMsg': {
       if (model.type != 'Ready' || model.screen.type != 'GetLink') throw new Error('wrong state')
 
       if (msg.msg.type === 'Finish') {
-        const link = `localhost:8080#${msg.msg.linkId};${msg.msg.publicKey}`
+        const link = `http://localhost:8080#${msg.msg.linkId};${msg.msg.publicKey}`
         const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link, msg.msg.passwordless)
 
         return [
@@ -225,6 +296,16 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         cmd.map<UploadFiles.Msg, Msg>(msg => ({ type: 'UploadFilesMsg', msg }))(uploadFilesCmd)
       ]
     }
+    case 'DownloadFilesMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'DownloadFiles') throw new Error('wrong state')
+
+      const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.update(msg.msg, model.screen.model)
+
+      return [
+        { ...model, screen: { ...model.screen, model: downloadFilesModel } },
+        cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
+      ]
+    }
   }
 }
 
@@ -243,6 +324,7 @@ function view(model: Model): Html<Msg> {
           case 'GetLink': return GetLink.view(model.screen.model)(msg => dispatch({ type: 'GetLinkMsg', msg }))
           case 'ExchangeLink': return ExchangeLink.view(model.screen.model)(msg => dispatch({ type: 'ExchangeLinkMsg', msg }))
           case 'UploadFiles': return UploadFiles.view(model.screen.model)(msg => dispatch({ type: 'UploadFilesMsg', msg }))
+          case 'DownloadFiles': return DownloadFiles.view(model.screen.model)(msg => dispatch({ type: 'DownloadFilesMsg', msg }))
         }
       }
 

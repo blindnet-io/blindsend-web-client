@@ -15,16 +15,23 @@ import * as HowToTooltip from './tooltip/HowTo'
 import * as FileTooBigTooltip from './tooltip/FileTooBig'
 import * as TooManyFilesTooltip from './tooltip/TooManyFiles'
 import * as TotalSizeTooBigTooltip from './tooltip/TotalSizeTooBig'
+import * as UploadingdTooltip from './tooltip/Uploading'
 import * as UploadedTooltip from './tooltip/Uploaded'
 
 import * as FileRow from './components/File'
 
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
+type StoredMetadata = { type: 'StoredMetadata', signedUploadLinks: { id: string, link: string }[] }
 type FailStoreMetadata = { type: 'FailStoreMetadata' }
-type StoredMetadata = { type: 'StoredMetadata', links: { id: string, link: string }[] }
-type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, state: sodium.StateAddress, offset: number, nextPartId: number }
-type UploadedFile = { type: 'UploadedFile', fileNum: number }
+type UploadInitialized = { type: 'UploadInitialized', fileNum: number, uploadId: string }
+type GotSignedFileLinkParts = { type: 'GotSignedFileLinkParts', fileNum: number, signedFileLinkParts: { id: string, part_links: string[], fin_link: string } }
+type FailUploadingFile = { type: 'FailUploadingFile' }
+
+type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, chunkNum: number, links: { id: string, part_links: string[], fin_link: string }, state: sodium.StateAddress, offset: number, tag: { chunkNum: string, tag: string } }
+type UploadedFileParts = { type: 'UploadedFileParts', fileNum: number, finLink: string, tag: { chunkNum: string, tag: string } }
+type JoinedFileParts = { type: 'JoinedFileParts', fileNum: number }
+type UploadFinished = { type: 'UploadFinished' }
 
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
@@ -32,10 +39,15 @@ type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
 type Msg =
   | AddFiles
   | Upload
-  | FailStoreMetadata
   | StoredMetadata
+  | FailStoreMetadata
+  | UploadInitialized
+  | FailUploadingFile
   | UploadFileChunk
-  | UploadedFile
+  | UploadedFileParts
+  | GotSignedFileLinkParts
+  | JoinedFileParts
+  | UploadFinished
 
   | LeftPanelMsg
   | FileMsg
@@ -66,7 +78,9 @@ type Model = {
   renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig',
   uploadLinks: { id: string, link: string }[],
   encStates: { state: sodium.StateAddress, header: Uint8Array }[]
-  uploadFinished: boolean
+  uploadFinished: boolean,
+
+  tags: { chunkNum: string, tag: string }[]
 }
 
 function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
@@ -76,7 +90,13 @@ function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
   return tmp;
 }
 
-function storeMetadata(encryptedMetadata: Uint8Array, files: { id: string, header: Uint8Array }[], linkId: string): cmd.Cmd<Msg> {
+function storeMetadata(
+  keyHash: Uint8Array,
+  publicKey: Uint8Array,
+  encryptedMetadata: Uint8Array,
+  files: { id: string, header: Uint8Array }[],
+  linkId: string
+): cmd.Cmd<Msg> {
 
   type Resp = { upload_links: { id: string, link: string }[] }
 
@@ -84,9 +104,11 @@ function storeMetadata(encryptedMetadata: Uint8Array, files: { id: string, heade
     upload_links: t.array(t.interface({ id: t.string, link: t.string }))
   })
   const body = {
-    encryptedMetadata: sodium.to_base64(encryptedMetadata),
-    files: files.map(f => ({ id: f.id, header: sodium.to_base64(f.header) })),
-    linkId
+    key_hash: sodium.to_base64(keyHash),
+    public_key: sodium.to_base64(publicKey),
+    encrypted_metadata: sodium.to_base64(encryptedMetadata),
+    files: files.map(f => ({ id: f.id, header: sodium.to_base64(f.header), full_upload: false })),
+    link_id: linkId
   }
 
   const req = {
@@ -99,42 +121,131 @@ function storeMetadata(encryptedMetadata: Uint8Array, files: { id: string, heade
       result,
       E.fold<http.HttpError, Resp, Msg>(
         _ => ({ type: 'FailStoreMetadata' }),
-        resp => ({ type: 'StoredMetadata', links: resp.upload_links })
+        resp => ({ type: 'StoredMetadata', signedUploadLinks: resp.upload_links })
       )
     )
   )(req)
 }
 
-const uploadChunkSize = 4194304
+function initUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
+
+  const init: () => Promise<Msg> = () =>
+    fetch(link, {
+      method: 'POST',
+      headers: {
+        'Content-Length': '0'
+      }
+    }).then<Msg>(resp => {
+      if (resp.status === 200)
+        return resp.text().then(xml => {
+          const uploadId = xml.substring(xml.indexOf("<UploadId>") + 10, xml.indexOf("</UploadId>"))
+          return ({ type: 'UploadInitialized', fileNum, uploadId })
+        })
+      else
+        return ({ type: 'FailUploadingFile' })
+    }).catch(_ => ({ type: 'FailUploadingFile' }))
+
+  return pipe(
+    () => init(),
+    perform(msg => msg)
+  )
+}
+
+function getSignedLinks(uploadId: string, fileId: string, parts: number, fileNum: number): cmd.Cmd<Msg> {
+
+  type Resp = { files: { id: string, part_links: string[], fin_link: string }[] }
+
+  const schema = t.interface({
+    files: t.array(t.interface({ id: t.string, part_links: t.array(t.string), fin_link: t.string }))
+  })
+  const body = {
+    files: [{ upload_id: uploadId, file_id: fileId, parts }]
+  }
+
+  const req = {
+    ...http.post(`http://localhost:9000/request/sign-upload-parts`, body, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  return http.send<Resp, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, Resp, Msg>(
+        _ => ({ type: 'FailUploadingFile' }),
+        resp => ({ type: 'GotSignedFileLinkParts', fileNum, signedFileLinkParts: resp.files[0] })
+      )
+    )
+  )(req)
+}
+
+function joinFileParts(fileNum: number, finLink: string, tags: { chunkNum: string, tag: string }[]): cmd.Cmd<Msg> {
+  const body = '<CompleteMultipartUpload>' + tags.reduce((acc, cur) => `${acc}<Part><PartNumber>${cur.chunkNum}</PartNumber><ETag>"${cur.tag}"</ETag></Part>`, '') + '</CompleteMultipartUpload>'
+
+  const req: () => Promise<Msg> = () =>
+    fetch(finLink, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/xml'
+      },
+      body
+    }).then<Msg>(resp => {
+      if (resp.status === 200)
+        return ({ type: 'JoinedFileParts', fileNum })
+      else
+        return ({ type: 'FailUploadingFile' })
+    }).catch<Msg>(_ => ({ type: 'FailUploadingFile' }))
+
+  return pipe(
+    () => req(),
+    perform(msg => msg)
+  )
+}
+
+function finishUpload(linkId: string,): cmd.Cmd<Msg> {
+
+  const schema = t.unknown
+  const body = { link_id: linkId }
+
+  const req = {
+    ...http.post(`http://localhost:9000/request/finish-upload`, body, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  return http.send<any, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, any, Msg>(
+        _ => ({ type: 'FailStoreMetadata' }),
+        _ => ({ type: 'UploadFinished' })
+      )
+    )
+  )(req)
+}
+
+const uploadChunkSize = 5242880
 const encryptionChunkSize = 131072
 
 function encryptAndUploadFileChunk(
   fileNum: number,
-  link: string,
+  chunkNum: number,
+  links: { id: string, part_links: string[], fin_link: string },
   file: FileData,
   offset: number,
-  state: sodium.StateAddress,
-  partId: number
+  state: sodium.StateAddress
 ): cmd.Cmd<Msg> {
 
-  function handleUpload(chunk: Uint8Array, msg: Msg, last: boolean): Promise<Msg> {
-    // TODO: handle backpressure
-    return fetch(`${link}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream'
-      },
-      body: chunk.buffer
-    }).then(resp => {
-      if (resp.status === 200)
-        return msg
-      else {
-        return task.delay(1000)<Msg>(() =>
-          handleUpload(chunk, msg, last)
-        )()
-      }
-    })
-  }
+  // function handleUpload(chunk: Uint8Array, msg: Msg, last: boolean): Promise<Msg> {
+  //   // TODO: handle backpressure
+  //   return fetch(`${links.part_links[chunkNum]}`, {
+  //     method: 'PUT',
+  //     body: chunk.buffer
+  //   }).then(resp => {
+  //     if (resp.status === 200)
+  //       return msg
+  //     else
+  //       return ({ type: 'FailUploadingFile' })
+  //   })
+  // }
 
   const fileChunkLen = uploadChunkSize - (uploadChunkSize / encryptionChunkSize) * 17
 
@@ -161,7 +272,19 @@ function encryptAndUploadFileChunk(
           const last = sodium.crypto_secretstream_xchacha20poly1305_push(state, new Uint8Array(), null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL)
           encryptedChunk.set(last, t)
 
-          return handleUpload(encryptedChunk, ({ type: 'UploadedFile', fileNum }), true)
+          return fetch(`${links.part_links[chunkNum - 1]}`, {
+            method: 'PUT',
+            body: encryptedChunk
+          }).then(resp => {
+            if (resp.status === 200) {
+              const tag = resp.headers.get('etag') || '""'
+              return ({ type: 'UploadedFileParts', fileNum, finLink: links.fin_link, tag: { chunkNum: chunkNum.toString(), tag: tag.substring(1, tag.length - 1) } })
+            }
+            else
+              return ({ type: 'FailUploadingFile' })
+          })
+
+          // return handleUpload(encryptedChunk, ({ type: 'UploadedFileParts', fileNum, finLink: links.fin_link }), true)
         })
     : () =>
       file.file.slice(offset, offset + fileChunkLen).arrayBuffer()
@@ -180,11 +303,23 @@ function encryptAndUploadFileChunk(
             t += encryptedEncChunk.length
           }
 
-          return handleUpload(
-            encryptedChunk,
-            ({ type: 'UploadFileChunk', fileNum, state, offset: offset + fileChunkLen, nextPartId: partId + 1 }),
-            false
-          )
+          return fetch(`${links.part_links[chunkNum - 1]}`, {
+            method: 'PUT',
+            body: encryptedChunk
+          }).then(resp => {
+            if (resp.status === 200) {
+              const tag = resp.headers.get('ETag') || ''
+              return ({ type: 'UploadFileChunk', fileNum, chunkNum: chunkNum + 1, links, state, offset: offset + fileChunkLen, tag: { chunkNum: chunkNum.toString(), tag } })
+            }
+            else
+              return ({ type: 'FailUploadingFile' })
+          })
+
+          // return handleUpload(
+          //   encryptedChunk,
+          //   ({ type: 'UploadFileChunk', fileNum, chunkNum: chunkNum + 1, links, state, offset: offset + fileChunkLen }),
+          //   false
+          // )
         })
 
   return pipe(
@@ -214,6 +349,8 @@ const init: (
       constraints,
       renderError: false,
       uploadFinished: false,
+
+      tags: []
     },
     cmd.batch([
       cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
@@ -223,6 +360,7 @@ const init: (
 
 const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
   console.log(msg)
+  console.log(model)
   switch (msg.type) {
     case 'AddFiles': {
       if (msg.files.length + model.files.filter(f => !f.tooBig).length > model.constraints.numOfFiles) {
@@ -249,22 +387,21 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'Upload': {
 
-      // if (model.uploadLinks) {
-      //   // TODO
-      //   return [
-      //     model,
-      //     cmd.none
-      //   ]
-      // }
-
       // X25519, 2x 32 bytes
       const { publicKey, privateKey } = sodium.crypto_kx_keypair()
       const { sharedTx: masterKey } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, model.reqPublicKey)
 
-      const metadata = model.files.map(f => ({
+      const keyHash = sodium.crypto_hash(masterKey)
+
+      const files = model.files.filter(f => !f.tooBig)
+
+      const encStates = files.map(_ => sodium.crypto_secretstream_xchacha20poly1305_init_push(masterKey)) // XChaCha20-Poly1305
+
+      const metadata = files.map((f, i) => ({
         name: f.file.name,
         size: f.file.size,
-        id: f.id
+        id: f.id,
+        header: sodium.to_base64(encStates[i].header)
       }))
 
       const iv = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES)
@@ -275,16 +412,16 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         masterKey
       )
 
-      const encStates = model.files.map(_ => sodium.crypto_secretstream_xchacha20poly1305_init_push(masterKey)) // XChaCha20-Poly1305
-
       return [
         {
           ...model,
+          files,
           uploading: true,
           masterKey,
-          encStates
+          encStates,
+          renderError: false
         },
-        storeMetadata(concat(iv, encryptedMetadata), model.files.map((f, i) => ({ id: f.id, header: encStates[i].header })), model.linkId)
+        storeMetadata(keyHash, publicKey, concat(iv, encryptedMetadata), files.map((f, i) => ({ id: f.id, header: encStates[i].header })), model.linkId)
       ]
     }
     case 'FailStoreMetadata': {
@@ -294,46 +431,92 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'StoredMetadata': {
 
       return [
-        { ...model, uploadLinks: msg.links },
-        cmd.batch(model.files.map((f, i) =>
-          encryptAndUploadFileChunk(i, msg.links[i].link, model.files[i], 0, model.encStates[i].state, 1)
-        ))
+        { ...model, uploadLinks: msg.signedUploadLinks },
+        initUpload(msg.signedUploadLinks[0].link, 0)
+      ]
+    }
+    case 'UploadInitialized': {
+
+      const file = model.files[msg.fileNum]
+      const parts = Math.ceil(file.file.size / uploadChunkSize)
+
+      return [
+        { ...model },
+        getSignedLinks(msg.uploadId, file.id, parts, msg.fileNum)
+      ]
+    }
+    case 'GotSignedFileLinkParts': {
+
+      const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 1 } : f)
+
+      return [
+        { ...model, files },
+        encryptAndUploadFileChunk(
+          msg.fileNum,
+          1,
+          msg.signedFileLinkParts,
+          model.files[msg.fileNum],
+          0,
+          model.encStates[msg.fileNum].state
+        )
       ]
     }
     case 'UploadFileChunk': {
 
       const files = model.files.map((f, i) =>
         i === msg.fileNum
-          ? { ...f, progress: Math.min(100, Math.ceil((msg.offset) / f.file.size * 100)) }
+          ? { ...f, progress: Math.min(90, Math.ceil((msg.offset) / f.file.size * 100)) }
           : f
       )
 
       return [
-        { ...model, files },
+        { ...model, files, tags: [...model.tags, msg.tag] },
         encryptAndUploadFileChunk(
           msg.fileNum,
-          model.uploadLinks[msg.fileNum].link,
+          msg.chunkNum,
+          msg.links,
           model.files[msg.fileNum],
           msg.offset,
-          msg.state,
-          msg.nextPartId
+          msg.state
         )
       ]
     }
-    case 'UploadedFile': {
+    case 'UploadedFileParts': {
 
-      const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, complete: true } : f)
+      const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 95 } : f)
+      const tags = [...model.tags, msg.tag]
 
-      if (files.every(f => f.complete)) {
-        // notify server
+      return [
+        { ...model, files, tags },
+        joinFileParts(msg.fileNum, msg.finLink, tags)
+      ]
+    }
+    case 'JoinedFileParts': {
+
+      const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 100 } : f)
+      const nextFileNum = msg.fileNum + 1
+
+      if (nextFileNum == model.files.length) {
         return [
-          { ...model, files, uploading: false, uploadFinished: true },
-          cmd.none
+          { ...model, files, tags: [] },
+          finishUpload(model.linkId)
         ]
       }
 
       return [
-        { ...model, files },
+        { ...model, files, tags: [] },
+        initUpload(model.uploadLinks[nextFileNum].link, nextFileNum)
+      ]
+    }
+    case 'UploadFinished': {
+      return [
+        { ...model, uploadFinished: true, uploading: false },
+        cmd.none
+      ]
+    }
+    case 'FailUploadingFile': {
+      return [
+        { ...model, uploading: false, tags: [] },
         cmd.none
       ]
     }
@@ -368,6 +551,8 @@ const view = (model: Model): Html<Msg> => dispatch => {
       case false: {
         if (model.uploadFinished)
           return UploadedTooltip.view()(dispatch)
+        else if (model.uploading)
+          return UploadingdTooltip.view()(dispatch)
         else
           return HowToTooltip.view()(dispatch)
       }
@@ -425,11 +610,12 @@ const view = (model: Model): Html<Msg> => dispatch => {
               </div>
 
               <span className="main-drop__browse">
-                or <a className="main-drop__browse-link" href="" onClick={e => {
-                  e.preventDefault()
-                  if (!model.uploading && model.uploadLinks.length === 0)
-                    document.getElementById('file-pick')?.click()
-                }}>BROWSE</a>
+                or <a className="main-drop__browse-link" href="" style={{ cursor: model.uploading || model.uploadFinished ? 'default' : 'pointer' }}
+                  onClick={e => {
+                    e.preventDefault()
+                    if (!model.uploading && model.uploadLinks.length === 0)
+                      document.getElementById('file-pick')?.click()
+                  }}>BROWSE</a>
               </span>
 
               <div className={model.files.length === 0 || model.uploading || model.uploadFinished ? "btn-wrap disabled" : "btn-wrap"}>

@@ -97,7 +97,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (msg.msg.type == 'ChangePassword' && !model.passStrength.estimated) {
 
         const estimate: cmd.Cmd<Msg> = pipe(
-          task.delay(2000)(task.fromIO(() => undefined)),
+          task.delay(500)(task.fromIO(() => undefined)),
           perform(
             () => ({ type: 'EstimatePass' })
           )
@@ -230,7 +230,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
                     onClick={() => dispatch({ type: 'GenerateLink' })}
                     disabled={model.loading}
                   />
-                  <span className={model.loading ? "btn-animation sending" : "btn-animation btn"}></span>
+                  <span className={model.loading ? "btn-animation sending" : "btn-animation"}></span>
                 </div>
               </div>
               <span className="main-password__pless">

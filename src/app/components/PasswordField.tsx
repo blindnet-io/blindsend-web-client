@@ -25,7 +25,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
   }
 }
 
-const view = (model: Model): Html<Msg> => dispatch => (
+const view = (model: Model, disabled: boolean = false): Html<Msg> => dispatch => (
   <div className="main-password__input-wrap">
     <input
       type={model.hidden ? "password" : "text"}
@@ -33,6 +33,7 @@ const view = (model: Model): Html<Msg> => dispatch => (
       id="myInput"
       className="main-input main-password__input"
       value={model.value}
+      disabled={disabled}
       onChange={e => dispatch({ type: 'ChangePassword', value: e.target.value })}
     />
     <span

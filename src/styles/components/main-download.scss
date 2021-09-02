@@ -74,6 +74,20 @@
   }
 }
 
+.main-download__file-disabled {
+  margin-left: auto;
+
+  svg {
+    @include mq($sm) {
+      width: 18px;
+    }
+  }
+
+  path {
+    transition: $dur $ease;
+  }
+}
+
 .main-download__files-icon {
   margin-right: 15px;
 }
