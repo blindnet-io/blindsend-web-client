@@ -13,11 +13,13 @@ import * as LeftPanel from '../components/LeftPanel'
 import * as PasswordField from '../../components/PasswordField'
 import * as FileRow from './components/File'
 
-import { fromCodec, promiseToCmd } from '../../helpers'
+import { fromCodec } from '../../helpers'
 import * as FilesReadyTooltip from './tooltip/FilesReady'
 import * as VerifyingPasswordTooltip from './tooltip/VerifyingPassword'
 import * as MetadataDecryptedTooltip from './tooltip/MetadataDecrypted'
 import * as DecryptingFilesTooltip from './tooltip/Downloading'
+import * as IndexedDbErrorTooltip from './tooltip/IndexedDbError'
+import * as DecryptionFailedTooltip from './tooltip/DecryptionFailed'
 
 import {
   ReadableStream,
@@ -48,6 +50,7 @@ type PassOk = { type: 'PassOk', masterKey: Uint8Array }
 type GotSeed = { type: 'GotSeed', seed: Uint8Array }
 type FailedGettingSeed = { type: 'FailedGettingSeed' }
 type DecryptedMetadata = { type: 'DecryptedMetadata', files: { name: string, size: number, id: string, header: Uint8Array }[] }
+type FailedDecryptingData = { type: 'FailedDecryptingData' }
 
 type DownloadAll = { type: 'DownloadAll' }
 type GotSignedDownloadLink = { type: 'GotSignedDownloadLink', link: string, fileId: string, nextFile: number }
@@ -69,6 +72,7 @@ type Msg =
   | GotSeed
   | FailedGettingSeed
   | DecryptedMetadata
+  | FailedDecryptingData
   | DownloadAll
   | GotSignedDownloadLink
   | GotFileStream
@@ -96,6 +100,7 @@ type Model = {
   blockingAction: BlockingAction,
   passwordCorrect: boolean,
   seedNotFound?: boolean,
+  decryptionFailed?: boolean,
   masterKey?: Uint8Array,
   files?: {
     name: string,
@@ -103,8 +108,7 @@ type Model = {
     id: string,
     header: Uint8Array,
     downloading: boolean,
-    progress: number,
-    complete: boolean
+    progress: number
   }[],
   fileStreams: ReadableStream<Uint8Array>[]
 
@@ -159,18 +163,23 @@ function decryptMetadata(masterKey: Uint8Array, encMetadata: Uint8Array): cmd.Cm
   const iv = encMetadata.slice(0, sodium.crypto_secretbox_NONCEBYTES)
   const meta = encMetadata.slice(sodium.crypto_secretbox_NONCEBYTES)
 
-  const decryptedMetadata = sodium.crypto_secretbox_open_easy(
-    meta,
-    iv,
-    masterKey
-  )
+  try {
+    const decryptedMetadata = sodium.crypto_secretbox_open_easy(
+      meta,
+      iv,
+      masterKey
+    )
 
-  const metadata: { name: string, size: number, id: string, header: string }[] =
-    JSON.parse(new TextDecoder().decode(decryptedMetadata))
+    const metadata: { name: string, size: number, id: string, header: string }[] =
+      JSON.parse(new TextDecoder().decode(decryptedMetadata))
 
-  const files = metadata.map(f => ({ ...f, header: sodium.from_base64(f.header) }))
+    const files = metadata.map(f => ({ ...f, header: sodium.from_base64(f.header) }))
 
-  return cmd.of({ type: 'DecryptedMetadata', files })
+    return cmd.of({ type: 'DecryptedMetadata', files })
+
+  } catch {
+    return cmd.of({ type: 'FailedDecryptingData' })
+  }
 }
 
 function getSignedDownloadLink(fileId: string, nextFile: number): cmd.Cmd<Msg> {
@@ -185,7 +194,9 @@ function getSignedDownloadLink(fileId: string, nextFile: number): cmd.Cmd<Msg> {
     pipe(
       result,
       E.fold<http.HttpError, Resp, Msg>(
-        _ => ({ type: 'FailedGetFile', fileId }),
+        _ => nextFile === -1
+          ? { type: 'FailedGetFile', fileId }
+          : { type: 'FailedDownloadArchive' },
         resp => ({ type: 'GotSignedDownloadLink', link: resp.link, fileId, nextFile })
       )
     )
@@ -204,12 +215,18 @@ function download(fileId: string, link: string, nextFile: number): cmd.Cmd<Msg> 
           const msg: Msg = ({ type: 'GotFileStream', fileId, encFileContent: resp.body, nextFile })
           return msg
         }
-        else return ({ type: 'FailedGetFile', fileId })
+        else if (nextFile === -1)
+          return { type: 'FailedGetFile', fileId }
+        else
+          return { type: 'FailedDownloadArchive' }
       })
-      .catch<Msg>(_ => ({ type: 'FailedGetFile', fileId }))
+      .catch<Msg>(_ => nextFile === -1
+        ? { type: 'FailedGetFile', fileId }
+        : { type: 'FailedDownloadArchive' }
+      )
 
   return pipe(
-    () => getFile(),
+    getFile,
     perform(msg => msg)
   )
 }
@@ -218,6 +235,7 @@ const encryptionChunkSize = 131072
 
 function decrypt(
   fileId: string,
+  fileSize: number,
   masterKey: Uint8Array,
   header: Uint8Array,
   encFileContent: ReadableStream<Uint8Array>,
@@ -260,7 +278,6 @@ function decrypt(
       },
       flush: (ctrl: TransformStreamDefaultController<Uint8Array>) => {
         if (leftOverBytes.length > 0) {
-          // console.log("engueued leftover", leftOverBytes)
           ctrl.enqueue(leftOverBytes.slice(0, leftOverBytes.length - 17))
           ctrl.enqueue(leftOverBytes.slice(leftOverBytes.length - 17))
         }
@@ -279,27 +296,34 @@ function decrypt(
     })
   }
 
-  // function progressTransformer(): TransformStream<Uint8Array, Uint8Array> {
-  //   let loaded = 0
-  //   let parts = 100
-  //   let percentage = 0
-  //   let partSize = fileSize / parts
+  function progressTransformer(): TransformStream<Uint8Array, Uint8Array> {
+    let loaded = 0
+    let parts = 100
+    let percentage = 0
+    let partSize = fileSize / parts
+    let last = -1
 
-  //   return new TransformStream({
-  //     transform: (chunk: Uint8Array, ctrl: TransformStreamDefaultController<Uint8Array>) => {
-  //       loaded += chunk.length;
-  //       if (loaded > partSize * percentage) {
-  //         const updatePercentage = Math.floor((loaded - partSize * percentage) / partSize)
-  //         percentage = percentage + updatePercentage
-  //         // console.log(percentage)
-  //         updateProgressBar(percentage)
-  //       }
+    return new TransformStream({
+      transform: (chunk: Uint8Array, ctrl: TransformStreamDefaultController<Uint8Array>) => {
+        loaded += chunk.length;
+        if (loaded > partSize * percentage) {
+          const updatePercentage = Math.floor((loaded - partSize * percentage) / partSize)
+          percentage = percentage + updatePercentage
+          const elem = document.getElementById(`progress-${fileId}`)
+          if (elem !== null && percentage > last) {
+            // console.log(percentage)
+            elem.innerHTML = `${percentage}`
+            last = percentage
+          }
+          // updateProgressBar(percentage)
+        }
 
-  //       ctrl.enqueue(chunk)
-  //     },
-  //     flush: _ => clearProgressBar()
-  //   })
-  // }
+        ctrl.enqueue(chunk)
+      },
+      // flush: _ => clearProgressBar()
+      flush: _ => undefined
+    })
+  }
 
   const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, masterKey)
 
@@ -314,14 +338,14 @@ function decrypt(
   const mappedDecryptTransformer: TransformStream<Uint8Array, Uint8Array> =
     toPolyfillTransform(decryptTransformer(state))
   // @ts-ignore
-  // const mappedProgressTransformer: TransformStream<Uint8Array, Uint8Array> =
-  //   toPolyfillTransform(progressTransformer())
+  const mappedProgressTransformer: TransformStream<Uint8Array, Uint8Array> =
+    toPolyfillTransform(progressTransformer())
 
   const fileContent =
     mappedEncFileContent
       .pipeThrough(mappedToFixedChunksTransformer)
       .pipeThrough(mappedDecryptTransformer)
-  // .pipeThrough(mappedProgressTransformer)
+      .pipeThrough(mappedProgressTransformer)
 
   return cmd.of({ type: 'FileDecrypted', fileId, fileContent, nextFile })
 }
@@ -360,19 +384,23 @@ function zipFiles(files: { name: string, size: number, content: ReadableStream<U
 
   const fileStream = toPolyfillWritable(streamSaver.createWriteStream('archive.zip'))
 
-  // @ts-ignore
-  toPolyfillReadable(window.createZip(files))
+  const result: () => Promise<Msg> = () =>
     // @ts-ignore
-    .pipeTo(fileStream)
-    // @ts-ignore
-    .then<Msg>(_ => ({ type: 'ArchiveDownloaded' }))
-    // @ts-ignore
-    .catch(e => {
-      console.log(e)
-      return ({ type: 'FailedDownloadArchive' })
-    })
+    toPolyfillReadable(window.createZip(files))
+      // @ts-ignore
+      .pipeTo(fileStream)
+      // @ts-ignore
+      .then<Msg>(_ => ({ type: 'ArchiveDownloaded' }))
+      // @ts-ignore
+      .catch(e => {
+        console.log(e)
+        return ({ type: 'FailedDownloadArchive' })
+      })
 
-  return cmd.none
+  return pipe(
+    result,
+    perform(msg => msg)
+  )
 }
 
 function init(
@@ -402,6 +430,7 @@ function init(
     blockingAction: false,
     passwordCorrect: false,
     fileStreams: [],
+    decryptionFailed: false,
 
     passFieldModel,
     leftPanelModel
@@ -482,16 +511,23 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'DecryptedMetadata': {
       return [
-        { ...model, blockingAction: false, files: msg.files.map(f => ({ ...f, downloading: false, progress: 0, complete: false })) },
+        { ...model, blockingAction: false, files: msg.files.map(f => ({ ...f, downloading: false, progress: 0 })) },
+        cmd.none
+      ]
+    }
+    case 'FailedDecryptingData': {
+      return [
+        { ...model, decryptionFailed: true, blockingAction: false },
         cmd.none
       ]
     }
 
     case 'DownloadAll': {
       if (!model.files) throw new Error('Wrong state')
+      const files = model.files.map(f => ({ ...f, downloading: true }))
 
       return [
-        { ...model, blockingAction: 'downloadingFiles' },
+        { ...model, files, blockingAction: 'downloadingFiles' },
         getSignedDownloadLink(model.files[0].id, 1)
       ]
     }
@@ -508,7 +544,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       return [
         model,
-        decrypt(file.id, model.masterKey, file.header, msg.encFileContent, msg.nextFile)
+        decrypt(file.id, file.size, model.masterKey, file.header, msg.encFileContent, msg.nextFile)
       ]
     }
     case 'FileDecrypted': {
@@ -544,7 +580,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'FileDownloaded': {
-      const files = model.files?.map(f => f.id === msg.fileId ? { ...f, downloading: false, complete: true } : f)
+      const files = model.files?.map(f => f.id === msg.fileId ? { ...f, downloading: false } : f)
 
       return [
         { ...model, files, blockingAction: false },
@@ -563,7 +599,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       const files = model.files?.map(f => f.id === msg.fileId ? { ...f, downloading: false } : f)
 
       return [
-        { ...model, files, blockingAction: false },
+        { ...model, files, blockingAction: false, decryptionFailed: true },
         cmd.none
       ]
     }
@@ -571,7 +607,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       const files = model.files?.map(f => ({ ...f, downloading: false }))
 
       return [
-        { ...model, files, blockingAction: false },
+        { ...model, files, blockingAction: false, decryptionFailed: true },
         cmd.none
       ]
     }
@@ -626,12 +662,16 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 }
 
 const view = (model: Model): Html<Msg> => dispatch => {
-
+  console.log(model)
   const renderTooltip = () => {
     if (model.blockingAction === 'downloadingFiles')
       return DecryptingFilesTooltip.view()(dispatch)
     if ((model.blockingAction !== false && ['checkingPass', 'decryptingMetadata', 'gettingSeed'].includes(model.blockingAction)) || model.typing > 0)
       return VerifyingPasswordTooltip.view()(dispatch)
+    else if (model.seedNotFound)
+      return IndexedDbErrorTooltip.view()(dispatch)
+    else if (model.decryptionFailed)
+      return DecryptionFailedTooltip.view()(dispatch)
     else if (!model.passwordCorrect)
       return FilesReadyTooltip.view()(dispatch)
     else
@@ -650,10 +690,10 @@ const view = (model: Model): Html<Msg> => dispatch => {
               <h2 className="main-password__title section-title">Download</h2>
 
               <div className="main-password__form">
-                {(model.passwordless || model.files === undefined)
-                  ? PasswordField.view(model.passFieldModel, model.passwordCorrect || model.blockingAction === 'checkingPass')(
-                    msg => dispatch({ type: 'PasswordFieldMsg', msg }))
-                  : undefined}
+                {(model.passwordless || model.files != undefined)
+                  ? undefined
+                  : PasswordField.view(model.passFieldModel, model.passwordCorrect || model.blockingAction === 'checkingPass')(
+                    msg => dispatch({ type: 'PasswordFieldMsg', msg }))}
 
                 <div className="main-download__files-wrap">
                   {!model.files
@@ -666,10 +706,15 @@ const view = (model: Model): Html<Msg> => dispatch => {
                   }
                 </div>
 
-                <div className={model.files ? "btn-wrap main-download__btn-wrap" : "btn-wrap main-download__btn-wrap main-download-disabled"}>
+                <div className={
+                  !model.files || (model.files.some(f => f.downloading)) || model.files.reduce((a, c) => a + c.size, 0) > 500000000
+                    ? "btn-wrap main-download__btn-wrap main-download-disabled"
+                    : "btn-wrap main-download__btn-wrap"
+                }>
                   <button
                     type="submit"
                     className="main-download__submit btn"
+                    disabled={model.files?.some(f => f.downloading)}
                     onClick={() => dispatch({ type: 'DownloadAll' })}
                   >
                     <span>DOWNLOAD ALL</span>

@@ -99,6 +99,10 @@
     padding: 15px 15px 5px;
   }
 
+  &.tooltip__inner--empty {
+    background: #1a1b1c;
+  }
+
   &.tooltip__inner--default {
     background-image: url('../images/default-tooltip.png');
     background-repeat: no-repeat;

@@ -17,6 +17,7 @@ import * as TooManyFilesTooltip from './tooltip/TooManyFiles'
 import * as TotalSizeTooBigTooltip from './tooltip/TotalSizeTooBig'
 import * as UploadingdTooltip from './tooltip/Uploading'
 import * as UploadedTooltip from './tooltip/Uploaded'
+import * as FailedUploadTooltip from './tooltip/FailedUpload'
 
 import * as FileRow from './components/File'
 
@@ -75,7 +76,7 @@ type Model = {
   linkId: string,
   reqPublicKey: Uint8Array,
   constraints: Constraints,
-  renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig',
+  renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig' | 'UploadFailed',
   uploadLinks: { id: string, link: string }[],
   encStates: { state: sodium.StateAddress, header: Uint8Array }[]
   uploadFinished: boolean,
@@ -215,7 +216,7 @@ function finishUpload(linkId: string,): cmd.Cmd<Msg> {
     pipe(
       result,
       E.fold<http.HttpError, any, Msg>(
-        _ => ({ type: 'FailStoreMetadata' }),
+        _ => ({ type: 'FailUploadingFile' }),
         _ => ({ type: 'UploadFinished' })
       )
     )
@@ -359,8 +360,6 @@ const init: (
 }
 
 const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
-  console.log(msg)
-  console.log(model)
   switch (msg.type) {
     case 'AddFiles': {
       if (msg.files.length + model.files.filter(f => !f.tooBig).length > model.constraints.numOfFiles) {
@@ -425,8 +424,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'FailStoreMetadata': {
-      // TODO
-      return [{ ...model, uploading: false }, cmd.none]
+      return [
+        { ...model, uploading: false, renderError: 'UploadFailed' },
+        cmd.none
+      ]
     }
     case 'StoredMetadata': {
 
@@ -515,8 +516,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'FailUploadingFile': {
+      const files = model.files.map(f => ({ ...f, progress: 0, complete: false }))
       return [
-        { ...model, uploading: false, tags: [] },
+        { ...model, files, uploading: false, tags: [], renderError: 'UploadFailed' },
         cmd.none
       ]
     }
@@ -559,6 +561,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
       case 'FileTooBig': return FileTooBigTooltip.view(filesize(model.constraints.singleSize))(dispatch)
       case 'TooManyFiles': return TooManyFilesTooltip.view(model.constraints.numOfFiles)(dispatch)
       case 'TotalSizeTooBig': return TotalSizeTooBigTooltip.view(filesize(model.constraints.totalSize))(dispatch)
+      case 'UploadFailed': return FailedUploadTooltip.view()(dispatch)
     }
   }
 

@@ -15,6 +15,7 @@ import * as LeftPanel from '../components/LeftPanel'
 import * as HowToTooltip from './tooltip/HowTo'
 import * as WeakPassTooltip from './tooltip/WeakPassword'
 import * as StrongPassTooltip from './tooltip/StrongPassword'
+import * as ServerErrorTooltip from './tooltip/ServerError'
 
 type PasswordFieldMsg = { type: 'PasswordFieldMsg', msg: PasswordField.Msg }
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
@@ -27,6 +28,8 @@ type GotLink = { type: 'GotLink', linkId: string }
 type GotLinkPasswordless = { type: 'GotLinkPasswordless', linkId: string }
 type SavedKeyPasswordless = { type: 'SavedKeyPasswordless' }
 type Finish = { type: 'Finish', linkId: string, publicKey: string, passwordless: boolean }
+type CanPasswordless = { type: 'CanPasswordless' }
+type IndexedDBNotSupported = { type: 'IndexedDBNotSupported' }
 
 type Msg =
   | PasswordFieldMsg
@@ -39,6 +42,8 @@ type Msg =
   | GotLinkPasswordless
   | SavedKeyPasswordless
   | Finish
+  | CanPasswordless
+  | IndexedDBNotSupported
 
 type Model = {
   passFieldModel: PasswordField.Model,
@@ -50,7 +55,26 @@ type Model = {
   loading: boolean,
   publicKey?: Uint8Array,
   seed?: Uint8Array,
-  linkId?: string
+  linkId?: string,
+  canPasswordless: boolean,
+  failed: boolean
+}
+
+function checkIndexedDb(): cmd.Cmd<Msg> {
+  const store = keyval.createStore('blindsend-test', 'test')
+  const checkStore: () => Promise<Msg> = () =>
+    keyval.set('key', 'val', store)
+      .then(_ => keyval.get('key', store))
+      .then<Msg>(res => {
+        if (res === 'val') return { type: 'CanPasswordless' }
+        else return { type: 'IndexedDBNotSupported' }
+      })
+      .catch(_ => ({ type: 'IndexedDBNotSupported' }))
+
+  return pipe(
+    checkStore,
+    perform(msg => msg)
+  )
 }
 
 function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uint8Array }): cmd.Cmd<Msg> {
@@ -81,8 +105,16 @@ const init: () => [Model, cmd.Cmd<Msg>] = () => {
   const [leftPanelModel, leftPanelCmd] = LeftPanel.init(1)
 
   return [
-    { passFieldModel, leftPanelModel, passStrength: { estimated: false, n: 0 }, loading: false },
+    {
+      passFieldModel,
+      leftPanelModel,
+      passStrength: { estimated: false, n: 0 },
+      loading: false,
+      canPasswordless: false,
+      failed: false
+    },
     cmd.batch([
+      checkIndexedDb(),
       cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
       cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
     ])
@@ -146,12 +178,18 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       // X25519, 2x 32 bytes
       const { publicKey } = sodium.crypto_kx_seed_keypair(seed)
 
-      return [{ ...model, loading: true, publicKey }, getLink({ type: 'Password', salt })]
+      return [
+        { ...model, loading: true, publicKey, failed: false },
+        getLink({ type: 'Password', salt })
+      ]
     }
     case 'GotLink': {
       if (model.publicKey) {
         const encodedKey = sodium.to_base64(model.publicKey)
-        return [{ ...model, loading: false }, cmd.of<Msg>({ type: 'Finish', linkId: msg.linkId, publicKey: encodedKey, passwordless: false })]
+        return [
+          { ...model, loading: false },
+          cmd.of<Msg>({ type: 'Finish', linkId: msg.linkId, publicKey: encodedKey, passwordless: false })
+        ]
       }
       else
         throw new Error('public key missing from state')
@@ -161,7 +199,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       const seed = sodium.randombytes_buf(sodium.crypto_kx_SEEDBYTES)
       const { publicKey } = sodium.crypto_kx_seed_keypair(seed)
 
-      return [{ ...model, loading: true, publicKey, seed }, getLink({ type: 'Passwordless' })]
+      return [
+        { ...model, loading: true, publicKey, seed, failed: false },
+        getLink({ type: 'Passwordless' })
+      ]
     }
     case 'GotLinkPasswordless': {
       if (model.seed) {
@@ -187,10 +228,18 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         throw new Error('state invalid')
     }
     case 'FailGetLink': {
-      // TODO
-      return [{ ...model, loading: false }, cmd.none]
+      return [{ ...model, loading: false, failed: true }, cmd.none]
     }
     case 'Finish': {
+      return [model, cmd.none]
+    }
+    case 'CanPasswordless': {
+      return [
+        { ...model, canPasswordless: true },
+        cmd.none
+      ]
+    }
+    case 'IndexedDBNotSupported': {
       return [model, cmd.none]
     }
   }
@@ -201,7 +250,9 @@ const view = (model: Model): Html<Msg> => dispatch => {
   const isStrongPass = model.passFieldModel.value.length > 2
 
   const renderTooltip = () => {
-    if (!model.passStrength.estimated)
+    if (model.failed)
+      return ServerErrorTooltip.view()(dispatch)
+    else if (!model.passStrength.estimated)
       return HowToTooltip.view()(dispatch)
     else if (!isStrongPass)
       return WeakPassTooltip.view()(dispatch)
@@ -233,12 +284,14 @@ const view = (model: Model): Html<Msg> => dispatch => {
                   <span className={model.loading ? "btn-animation sending" : "btn-animation"}></span>
                 </div>
               </div>
-              <span className="main-password__pless">
-                or <a className="main-password__pless-link" href="" onClick={e => {
-                  e.preventDefault()
-                  dispatch({ type: 'GenerateLinkPasswordless' })
-                }}>Go Passwordless</a>
-              </span>
+              {model.canPasswordless &&
+                <span className="main-password__pless">
+                  or <a className="main-password__pless-link" href="" onClick={e => {
+                    e.preventDefault()
+                    dispatch({ type: 'GenerateLinkPasswordless' })
+                  }}>Go Passwordless</a>
+                </span>
+              }
             </div>
           </div>
         </div>

@@ -2,10 +2,8 @@ import * as React from 'react'
 import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
-import { of } from 'fp-ts/lib/Task'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
-import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 
 import BlindsendLogo from '../images/blindsend.svg'
@@ -22,6 +20,9 @@ import * as GetLink from './request/GetLink'
 import * as ExchangeLink from './request/ExchangeLink'
 import * as UploadFiles from './request/UploadFiles'
 import * as DownloadFiles from './request/DownloadFiles'
+
+import * as LoadingScreen from './components/LoadingScreen'
+import * as ServerErrorTooltip from './tooltip/ServerError'
 
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
 type FailBadLink = { type: 'FailBadLink' }
@@ -61,25 +62,7 @@ type InitializedModel =
 type Model =
   | { type: 'Loading', linkData?: { linkId: string, key: string } }
   | InitializedModel
-
-
-// function getLinkData(): cmd.Cmd<Msg> {
-
-//   const getLinkId = () => {
-//     if (window.location.pathname === '/request' || window.location.pathname === '/request/')
-//       return Opt.none
-//     else {
-//       const linkId = window.location.pathname.substring(9)
-//       const pk1 = window.location.hash.substring(1)
-//       return Opt.some({ linkId, pk1 })
-//     }
-//   }
-
-//   return pipe(
-//     fromIO(getLinkId),
-//     perform(linkData => ({ type: 'GotLinkData', linkData }))
-//   )
-// }
+  | { type: 'Error' }
 
 function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 
@@ -165,6 +148,7 @@ const init: () => [Model, cmd.Cmd<Msg>] = () =>
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'InitializedLibsodium': {
+      if (model.type === 'Error') throw new Error('Not possible')
 
       const [linkIdWithHash, key] = window.location.hash.split(';')
       const linkId = linkIdWithHash.substr(1)
@@ -190,8 +174,10 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       return [model, cmd.none]
     }
     case 'FailGetStatus': {
-      // TODO
-      return [model, cmd.none]
+      return [
+        { type: 'Error' },
+        cmd.none
+      ]
     }
     case 'GotStatus': {
       if (model.type != 'Loading' || model.linkData == undefined)
@@ -242,7 +228,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'FailGetMetadata': {
       return [
-        model,
+        { type: 'Error' },
         cmd.none
       ]
     }
@@ -314,7 +300,63 @@ function view(model: Model): Html<Msg> {
   return dispatch => {
 
     function renderInitializing() {
-      return <div>Initializing</div>
+      return LoadingScreen.view()(dispatch)
+    }
+
+    function renderError() {
+      return (
+        <div className="site-page">
+          <div className="site-page__container container">
+
+            <header className="site-header">
+              {MainNavigation.view()(dispatch)}
+              <div className="site-header__logo">
+                <img src={BlindsendLogo} alt="" />
+              </div>
+              <ul className="site-header__nav-desktop">
+                {/* <li className="site-header__nav-item"><a href="">Create account</a></li>
+                <li className="site-header__nav-item"><a href="">Log-in</a></li> */}
+              </ul>
+              <div className="site-header__inner">
+                <ul className="site-header__nav">
+                  {/* <li className="site-header__nav-item"><a href="">Create account</a></li>
+                  <li className="site-header__nav-item"><a href="">Log-in</a></li> */}
+                </ul>
+                {LegalLinks.view(true)(dispatch)}
+              </div>
+            </header>
+
+            <div className="site-page__row row">
+
+              <div className="site-nav__wrap col-lg-2">
+                <div className="site-nav">
+                  <div className="site-nav__img">
+                    <img src={BlindsendLogo} alt="" />
+                  </div>
+                </div>
+                {LegalLinks.view()(dispatch)}
+              </div>
+
+              <div className="site-main__wrap col-lg-7">
+                <div className="site-main">
+                  <div className="site-main__content">
+                  </div>
+                </div>
+              </div>
+
+              {ServerErrorTooltip.view()(dispatch)}
+
+            </div>
+
+            {Footer.view()(dispatch)}
+
+            {PrivacyPolicy.view()(dispatch)}
+            {LegalMentions.view()(dispatch)}
+            {TermsAndConditions.view()(dispatch)}
+
+          </div>
+        </div>
+      )
     }
 
     function renderRequest(model: InitializedModel) {
@@ -338,13 +380,13 @@ function view(model: Model): Html<Msg> {
                 <img src={BlindsendLogo} alt="" />
               </div>
               <ul className="site-header__nav-desktop">
-                <li className="site-header__nav-item"><a href="">Create account</a></li>
-                <li className="site-header__nav-item"><a href="">Log-in</a></li>
+                {/* <li className="site-header__nav-item"><a href="#">Create account</a></li>
+                <li className="site-header__nav-item"><a href="#">Log-in</a></li> */}
               </ul>
               <div className="site-header__inner">
                 <ul className="site-header__nav">
-                  <li className="site-header__nav-item"><a href="">Create account</a></li>
-                  <li className="site-header__nav-item"><a href="">Log-in</a></li>
+                  {/* <li className="site-header__nav-item"><a href="#">Create account</a></li>
+                  <li className="site-header__nav-item"><a href="#">Log-in</a></li> */}
                 </ul>
                 {LegalLinks.view(true)(dispatch)}
               </div>
@@ -366,6 +408,7 @@ function view(model: Model): Html<Msg> {
     switch (model.type) {
       case 'Loading': return renderInitializing()
       case 'Ready': return renderRequest(model)
+      case 'Error': return renderError()
     }
   }
 
