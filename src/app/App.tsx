@@ -6,6 +6,8 @@ import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import * as sodium from 'libsodium-wrappers'
 
+import { endpoint } from './globals'
+
 import BlindsendLogo from '../images/blindsend.svg'
 import { promiseToCmd } from './helpers'
 import * as MainNavigation from './components/MainNavigation'
@@ -83,7 +85,7 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
     })
   })
   const req = {
-    ...http.get(`http://localhost:9000/link-status/${linkId}`, fromCodec(schema)),
+    ...http.get(`${endpoint}/link-status/${linkId}`, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -123,7 +125,7 @@ function getMetadata(linkId: string) {
     num_files: t.number
   })
 
-  const req = http.get(`http://localhost:9000/request/get-metadata/${linkId}`, fromCodec(schema))
+  const req = http.get(`${endpoint}/request/get-metadata/${linkId}`, fromCodec(schema))
 
   return http.send<Resp, Msg>(result =>
     pipe(
@@ -237,7 +239,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       if (model.type != 'Ready' || model.screen.type != 'GetLink') throw new Error('wrong state')
 
       if (msg.msg.type === 'Finish') {
-        const link = `http://localhost:8080#${msg.msg.linkId};${msg.msg.publicKey}`
+        const link = `${window.location.origin}#${msg.msg.linkId};${msg.msg.publicKey}`
         const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link, msg.msg.passwordless)
 
         return [

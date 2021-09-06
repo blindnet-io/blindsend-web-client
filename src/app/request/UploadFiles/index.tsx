@@ -9,6 +9,8 @@ import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 import filesize from 'filesize'
 
+import { endpoint, uploadChunkSize, encryptionChunkSize } from '../../globals'
+
 import * as LeftPanel from '../components/LeftPanel'
 import { fromCodec, uuidv4 } from '../../helpers'
 import * as HowToTooltip from './tooltip/HowTo'
@@ -113,7 +115,7 @@ function storeMetadata(
   }
 
   const req = {
-    ...http.post(`http://localhost:9000/request/store-metadata`, body, fromCodec(schema)),
+    ...http.post(`${endpoint}/request/store-metadata`, body, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -164,7 +166,7 @@ function getSignedLinks(uploadId: string, fileId: string, parts: number, fileNum
   }
 
   const req = {
-    ...http.post(`http://localhost:9000/request/sign-upload-parts`, body, fromCodec(schema)),
+    ...http.post(`${endpoint}/request/sign-upload-parts`, body, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -208,7 +210,7 @@ function finishUpload(linkId: string,): cmd.Cmd<Msg> {
   const body = { link_id: linkId }
 
   const req = {
-    ...http.post(`http://localhost:9000/request/finish-upload`, body, fromCodec(schema)),
+    ...http.post(`${endpoint}/request/finish-upload`, body, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -222,9 +224,6 @@ function finishUpload(linkId: string,): cmd.Cmd<Msg> {
     )
   )(req)
 }
-
-const uploadChunkSize = 5242880
-const encryptionChunkSize = 131072
 
 function encryptAndUploadFileChunk(
   fileNum: number,

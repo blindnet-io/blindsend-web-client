@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "clean": "rimraf dist",
     "start": "webpack serve --config webpack.dev.js --host 0.0.0.0",
-    "build": "webpack --config webpack.prod.js",
+    "build": "npm run clean && webpack --config webpack.prod.js",
     "build-local": "webpack --config webpack.local.js",
     "check-types": "tsc"
   },
@@ -57,6 +58,7 @@
     "io-ts-types": "^0.5.16",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
+    "rimraf": "^3.0.2",
     "rxjs": "^7.1.0",
     "spinners-react": "^1.0.4",
     "stream-to-promise": "^3.0.0",

@@ -9,6 +9,8 @@ import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 import * as keyval from 'idb-keyval'
 
+import { endpoint } from '../../globals'
+
 import { fromCodec, promiseToCmd } from '../../helpers'
 import * as PasswordField from '../../components/PasswordField'
 import * as LeftPanel from '../components/LeftPanel'
@@ -85,7 +87,7 @@ function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uin
   const body = input.type === 'Password' ? { salt: sodium.to_base64(input.salt), passwordless: false } : { passwordless: true }
 
   const req = {
-    ...http.post(`http://localhost:9000/request/get-link`, body, fromCodec(schema)),
+    ...http.post(`${endpoint}/request/get-link`, body, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 

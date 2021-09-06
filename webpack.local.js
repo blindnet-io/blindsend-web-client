@@ -74,9 +74,9 @@ module.exports = merge(common, {
     new CopyPlugin({
       patterns: [
         { from: './src/images/favicon.png', to: 'images/favicon.png' },
-        { from: './src/libs/sodium', to: 'js/sodium.js' },
+        { from: './src/libs/sodium.js', to: 'js/sodium.js' },
         { from: './src/libs/zip-stream.js', to: 'js/zip-stream.js' },
-        { from: './src/libs/mitm', to: 'mitm' },
+        { from: './src/libs/stream-saver_mitm', to: 'mitm' },
       ],
     }),
   ]

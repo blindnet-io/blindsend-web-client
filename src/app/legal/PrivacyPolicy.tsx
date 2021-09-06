@@ -22,12 +22,12 @@ const view = (): Html<any> => _ => {
           document.querySelector('.js-main-privacy')?.classList.remove('show')
         }}>
           &#10005;
-      </span>
+        </span>
       </div>
       <div className="main-privacy__content">
         <h1 className="main-privacy__title">Privacy Policy</h1>
         <h2>Who we are</h2>
-        <p>Our website address is: http://www.blindsend.io</p>
+        <p>Our website address is: https://www.blindsend.io</p>
         <h2>What personal data we collect and why we collect it</h2>
         <p>When visitors leave comments on the site we collect the data shown in the comments form, and also the visitor’s IP address and browser user agent string to help spam detection.</p>
         <h2>Media</h2>

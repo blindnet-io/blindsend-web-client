@@ -9,6 +9,8 @@ import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 import * as keyval from 'idb-keyval'
 
+import { endpoint, encryptionChunkSize } from '../../globals'
+
 import * as LeftPanel from '../components/LeftPanel'
 import * as PasswordField from '../../components/PasswordField'
 import * as FileRow from './components/File'
@@ -188,7 +190,7 @@ function getSignedDownloadLink(fileId: string, nextFile: number): cmd.Cmd<Msg> {
 
   const schema = t.interface({ link: t.string })
 
-  const req = http.get(`http://localhost:9000/request/signed-download-link/${fileId}`, fromCodec(schema))
+  const req = http.get(`${endpoint}/request/signed-download-link/${fileId}`, fromCodec(schema))
 
   return http.send<Resp, Msg>(result =>
     pipe(
@@ -230,8 +232,6 @@ function download(fileId: string, link: string, nextFile: number): cmd.Cmd<Msg> 
     perform(msg => msg)
   )
 }
-
-const encryptionChunkSize = 131072
 
 function decrypt(
   fileId: string,
@@ -370,7 +370,6 @@ function saveFile(
       .pipeTo(fileStream)
       .then<Msg>(_ => ({ type: 'FileDownloaded', fileId }))
       .catch(e => {
-        console.log(e)
         return ({ type: 'FailedGetFile', fileId })
       })
 
@@ -380,20 +379,23 @@ function saveFile(
   )
 }
 
-function zipFiles(files: { name: string, size: number, content: ReadableStream<Uint8Array> }[]): cmd.Cmd<Msg> {
+function zipFiles(files: { id: string, name: string, size: number, content: ReadableStream<Uint8Array> }[]): cmd.Cmd<Msg> {
+
+  let i = 0
+  const filesDistNames = files
+    .map(f => files.some(ff => ff.id !== f.id && ff.name === f.name) ? { ...f, name: `${i++}-${f.name}` } : f)
 
   const fileStream = toPolyfillWritable(streamSaver.createWriteStream('archive.zip'))
 
   const result: () => Promise<Msg> = () =>
     // @ts-ignore
-    toPolyfillReadable(window.createZip(files))
+    toPolyfillReadable(window.createZip(filesDistNames))
       // @ts-ignore
       .pipeTo(fileStream)
       // @ts-ignore
       .then<Msg>(_ => ({ type: 'ArchiveDownloaded' }))
       // @ts-ignore
       .catch(e => {
-        console.log(e)
         return ({ type: 'FailedDownloadArchive' })
       })
 
@@ -567,9 +569,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           { ...model, fileStreams: [] },
           zipFiles([...model.fileStreams, msg.fileContent].map((content, i) => {
             if (!model.files || !model.files[i]) throw new Error('Wrong state')
-            const { name, size } = model.files[i]
+            const { id, name, size } = model.files[i]
 
-            return ({ name, size, content })
+            return ({ id, name, size, content })
           }))
         ]
       }
@@ -662,7 +664,6 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 }
 
 const view = (model: Model): Html<Msg> => dispatch => {
-  console.log(model)
   const renderTooltip = () => {
     if (model.blockingAction === 'downloadingFiles')
       return DecryptingFilesTooltip.view()(dispatch)
