@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 
-import BlindsendLogo from '../../images/blindsend.svg'
+import BlindsendLogo from '../../../images/blindsend.svg'
 
 const view = (): Html<any> => _ => {
 
@@ -22,7 +22,7 @@ const view = (): Html<any> => _ => {
           document.querySelector('.js-main-terms')?.classList.remove('show')
         }}>
           &#10005;
-      </span>
+        </span>
       </div>
       <div className="main-privacy__content">
         <h1 className="main-privacy__title">Terms and conditions</h1>

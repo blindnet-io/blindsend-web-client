@@ -4,10 +4,10 @@ import { Html } from 'elm-ts/lib/React'
 import BlindsendLogo from '../../images/blindsend.svg'
 import * as MainNavigation from './MainNavigation'
 import * as Footer from './Footer'
-import * as LegalLinks from '../legal/LegalLinks'
-import * as PrivacyPolicy from '../legal/PrivacyPolicy'
-import * as LegalMentions from '../legal/LegalMentions'
-import * as TermsAndConditions from '../legal/TermsAndCondidions'
+import * as LegalLinks from './legal/LegalLinks'
+import * as PrivacyPolicy from './legal/PrivacyPolicy'
+import * as LegalMentions from './legal/LegalMentions'
+import * as TermsAndConditions from './legal/TermsAndCondidions'
 
 import { SpinnerCircular } from 'spinners-react'
 
@@ -71,7 +71,7 @@ function view(): Html<any> {
                   size={53}
                   thickness={143}
                   speed={100}
-                  color="rgba(41, 43, 46, 1)"
+                  color="rgba(150, 150, 150, 1)"
                   secondaryColor="rgba(0, 0, 0, 0)"
                   style={{ margin: 'auto' }}
                 />
@@ -86,7 +86,7 @@ function view(): Html<any> {
                   size={53}
                   thickness={143}
                   speed={100}
-                  color="rgba(41, 43, 46, 1)"
+                  color="rgba(150, 150, 150, 1)"
                   secondaryColor="rgba(0, 0, 0, 0)"
                   style={{ margin: 'auto' }}
                 />

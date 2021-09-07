@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 
-import BlindsendLogo from '../../images/blindsend.svg'
+import BlindsendLogo from '../../../images/blindsend.svg'
 
 const view = (): Html<any> => _ => {
 

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { cmd } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 
-import * as LegalLinks from '../../legal/LegalLinks'
+import * as LegalLinks from '../../components/legal/LegalLinks'
 import BlindsendLogo from '../../../images/blindsend.svg'
 
 type SwitchToSend = { type: 'SwitchToSend' }
