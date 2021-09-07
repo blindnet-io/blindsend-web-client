@@ -48,7 +48,7 @@ const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(Transform
 
 type CheckPassword = { type: 'CheckPassword' }
 type PassNotOk = { type: 'PassNotOk' }
-type PassOk = { type: 'PassOk', masterKey: Uint8Array }
+type PassOk = { type: 'PassOk', seed: Uint8Array }
 type GotSeed = { type: 'GotSeed', seed: Uint8Array }
 type FailedGettingSeed = { type: 'FailedGettingSeed' }
 type DecryptedMetadata = { type: 'DecryptedMetadata', files: { name: string, size: number, id: string, header: Uint8Array }[] }
@@ -103,7 +103,8 @@ type Model = {
   passwordCorrect: boolean,
   seedNotFound?: boolean,
   decryptionFailed?: boolean,
-  masterKey?: Uint8Array,
+  seed?: Uint8Array,
+  fileKeys?: Uint8Array[],
   files?: {
     name: string,
     size: number,
@@ -142,26 +143,26 @@ function checkSeed(
   pk: Uint8Array,
   myPk: Uint8Array,
   keyHash: Uint8Array,
-  seed: Uint8Array
+  passSeed: Uint8Array
 ): cmd.Cmd<Msg> {
 
-  const { publicKey, privateKey } = sodium.crypto_kx_seed_keypair(seed)
+  const { publicKey, privateKey } = sodium.crypto_kx_seed_keypair(passSeed)
 
   if (sodium.compare(myPk, publicKey) !== 0) {
     return cmd.of({ type: 'PassNotOk' })
   }
 
-  const { sharedRx: masterKey } = sodium.crypto_kx_server_session_keys(publicKey, privateKey, pk)
-  const hash = sodium.crypto_hash(masterKey)
+  const { sharedRx: seed } = sodium.crypto_kx_server_session_keys(publicKey, privateKey, pk)
+  const hash = sodium.crypto_hash(seed)
 
   if (sodium.compare(keyHash, hash) !== 0) {
     return cmd.of({ type: 'PassNotOk' })
   }
 
-  return cmd.of({ type: 'PassOk', masterKey })
+  return cmd.of({ type: 'PassOk', seed })
 }
 
-function decryptMetadata(masterKey: Uint8Array, encMetadata: Uint8Array): cmd.Cmd<Msg> {
+function decryptMetadata(metadataKey: Uint8Array, encMetadata: Uint8Array): cmd.Cmd<Msg> {
   const iv = encMetadata.slice(0, sodium.crypto_secretbox_NONCEBYTES)
   const meta = encMetadata.slice(sodium.crypto_secretbox_NONCEBYTES)
 
@@ -169,7 +170,7 @@ function decryptMetadata(masterKey: Uint8Array, encMetadata: Uint8Array): cmd.Cm
     const decryptedMetadata = sodium.crypto_secretbox_open_easy(
       meta,
       iv,
-      masterKey
+      metadataKey
     )
 
     const metadata: { name: string, size: number, id: string, header: string }[] =
@@ -236,7 +237,7 @@ function download(fileId: string, link: string, nextFile: number): cmd.Cmd<Msg> 
 function decrypt(
   fileId: string,
   fileSize: number,
-  masterKey: Uint8Array,
+  fileKey: Uint8Array,
   header: Uint8Array,
   encFileContent: ReadableStream<Uint8Array>,
   nextFile: number
@@ -325,7 +326,7 @@ function decrypt(
     })
   }
 
-  const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, masterKey)
+  const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, fileKey)
 
   // @ts-ignore
   const mappedEncFileContent: ReadableStream<Uint8Array> =
@@ -494,9 +495,12 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'PassOk': {
+
+      const metadataKey = sodium.crypto_kdf_derive_from_key(sodium.crypto_secretbox_KEYBYTES, 1, 'metadata', msg.seed)
+
       return [
-        { ...model, blockingAction: 'decryptingMetadata', passwordCorrect: true, masterKey: msg.masterKey },
-        decryptMetadata(msg.masterKey, model.encMetadata)
+        { ...model, blockingAction: 'decryptingMetadata', passwordCorrect: true, seed: msg.seed },
+        decryptMetadata(metadataKey, model.encMetadata)
       ]
     }
     case 'GotSeed': {
@@ -512,8 +516,20 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'DecryptedMetadata': {
+      if (!model.seed) throw new Error('Wrong state')
+
+      const { seed } = model
+
+      const fileKeys = msg.files.map((_, i) =>
+        sodium.crypto_kdf_derive_from_key(
+          sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES,
+          i + 2,
+          `${i}${(new Array(8 - i)).fill('-').join('')}`,
+          seed
+        ))
+
       return [
-        { ...model, blockingAction: false, files: msg.files.map(f => ({ ...f, downloading: false, progress: 0 })) },
+        { ...model, blockingAction: false, fileKeys, files: msg.files.map(f => ({ ...f, downloading: false, progress: 0 })) },
         cmd.none
       ]
     }
@@ -541,12 +557,14 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'GotFileStream': {
       const file = model.files?.find(f => f.id === msg.fileId)
-      if (!file || !model.masterKey)
+      const i = model.files?.findIndex(f => f.id === msg.fileId)
+
+      if (!file || !model.fileKeys || i == undefined)
         throw new Error('Wrong state')
 
       return [
         model,
-        decrypt(file.id, file.size, model.masterKey, file.header, msg.encFileContent, msg.nextFile)
+        decrypt(file.id, file.size, model.fileKeys[i], file.header, msg.encFileContent, msg.nextFile)
       ]
     }
     case 'FileDecrypted': {

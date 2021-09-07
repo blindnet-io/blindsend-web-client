@@ -74,7 +74,7 @@ type Model = {
   files: FileData[],
   totalSize: number,
   uploading: boolean,
-  masterKey?: Uint8Array,
+  fileKeys?: Uint8Array[],
   linkId: string,
   reqPublicKey: Uint8Array,
   constraints: Constraints,
@@ -387,13 +387,22 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       // X25519, 2x 32 bytes
       const { publicKey, privateKey } = sodium.crypto_kx_keypair()
-      const { sharedTx: masterKey } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, model.reqPublicKey)
+      const { sharedTx: seed } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, model.reqPublicKey)
 
-      const keyHash = sodium.crypto_hash(masterKey)
+      const keyHash = sodium.crypto_hash(seed)
+
+      const metadataKey = sodium.crypto_kdf_derive_from_key(sodium.crypto_secretbox_KEYBYTES, 1, 'metadata', seed)
+
+      const fileKeys = model.files.map((f, i) =>
+        sodium.crypto_kdf_derive_from_key(
+          sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES,
+          i + 2,
+          `${i}${(new Array(8 - i)).fill('-').join('')}`,
+          seed
+        ))
 
       const files = model.files.filter(f => !f.tooBig)
-
-      const encStates = files.map(_ => sodium.crypto_secretstream_xchacha20poly1305_init_push(masterKey)) // XChaCha20-Poly1305
+      const encStates = files.map((_, i) => sodium.crypto_secretstream_xchacha20poly1305_init_push(fileKeys[i]))
 
       const metadata = files.map((f, i) => ({
         name: f.file.name,
@@ -407,7 +416,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       const encryptedMetadata = sodium.crypto_secretbox_easy(
         new TextEncoder().encode((JSON.stringify(metadata))),
         iv,
-        masterKey
+        metadataKey
       )
 
       return [
@@ -415,7 +424,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           ...model,
           files,
           uploading: true,
-          masterKey,
+          fileKeys,
           encStates,
           renderError: false
         },
