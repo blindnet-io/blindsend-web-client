@@ -7,7 +7,6 @@ import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
-import * as keyval from 'idb-keyval'
 
 import { endpoint, encryptionChunkSize } from '../../globals'
 
@@ -15,12 +14,11 @@ import * as LeftPanel from '../components/LeftPanel'
 import * as PasswordField from '../../components/PasswordField'
 import * as FileRow from './components/File'
 
-import { fromCodec } from '../../helpers'
+import { fromCodec, concat } from '../../helpers'
 import * as FilesReadyTooltip from './tooltip/FilesReady'
 import * as VerifyingPasswordTooltip from './tooltip/VerifyingPassword'
 import * as MetadataDecryptedTooltip from './tooltip/MetadataDecrypted'
 import * as DecryptingFilesTooltip from './tooltip/Downloading'
-import * as IndexedDbErrorTooltip from './tooltip/IndexedDbError'
 import * as DecryptionFailedTooltip from './tooltip/DecryptionFailed'
 
 import {
@@ -49,8 +47,6 @@ const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(Transform
 type CheckPassword = { type: 'CheckPassword' }
 type PassNotOk = { type: 'PassNotOk' }
 type PassOk = { type: 'PassOk', seed: Uint8Array }
-type GotSeed = { type: 'GotSeed', seed: Uint8Array }
-type FailedGettingSeed = { type: 'FailedGettingSeed' }
 type DecryptedMetadata = { type: 'DecryptedMetadata', files: { name: string, size: number, id: string, header: Uint8Array }[] }
 type FailedDecryptingData = { type: 'FailedDecryptingData' }
 
@@ -71,8 +67,6 @@ type Msg =
   | CheckPassword
   | PassNotOk
   | PassOk
-  | GotSeed
-  | FailedGettingSeed
   | DecryptedMetadata
   | FailedDecryptingData
   | DownloadAll
@@ -91,17 +85,15 @@ type BlockingAction = false | 'gettingSeed' | 'checkingPass' | 'decryptingMetada
 
 type Model = {
   linkId: string,
-  reqPublicKey: Uint8Array,
+  seedPart: Uint8Array,
   encMetadata: Uint8Array,
   seedHash: Uint8Array,
-  publicKey: Uint8Array,
   salt: Uint8Array,
   passwordless: boolean,
   numFiles: number,
   typing: number,
   blockingAction: BlockingAction,
   passwordCorrect: boolean,
-  seedNotFound?: boolean,
   decryptionFailed?: boolean,
   seed?: Uint8Array,
   fileKeys?: Uint8Array[],
@@ -120,8 +112,6 @@ type Model = {
 }
 
 function checkPassword(
-  pk: Uint8Array,
-  myPk: Uint8Array,
   salt: Uint8Array,
   seedHash: Uint8Array,
   pass: string
@@ -136,26 +126,29 @@ function checkPassword(
     sodium.crypto_pwhash_ALG_DEFAULT
   )
 
-  return checkSeed(pk, myPk, seedHash, seed)
+  return checkSeed(seedHash, salt, seed)
 }
 
 function checkSeed(
-  pk: Uint8Array,
-  myPk: Uint8Array,
   seedHash: Uint8Array,
-  passSeed: Uint8Array
+  salt: Uint8Array,
+  seedPart: Uint8Array
 ): cmd.Cmd<Msg> {
 
-  const { publicKey, privateKey } = sodium.crypto_kx_seed_keypair(passSeed)
+  const seed2 = sodium.crypto_pwhash(
+    sodium.crypto_kx_SEEDBYTES,
+    '',
+    salt,
+    1,
+    8192,
+    sodium.crypto_pwhash_ALG_DEFAULT
+  )
 
-  if (sodium.compare(myPk, publicKey) !== 0) {
-    return cmd.of({ type: 'PassNotOk' })
-  }
+  const seed = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, concat(seedPart, seed2))
 
-  const { sharedRx: seed } = sodium.crypto_kx_server_session_keys(publicKey, privateKey, pk)
-  const hash = sodium.crypto_hash(seed)
+  const newSeedHash = sodium.crypto_hash(seed)
 
-  if (sodium.compare(seedHash, hash) !== 0) {
+  if (sodium.compare(seedHash, newSeedHash) !== 0) {
     return cmd.of({ type: 'PassNotOk' })
   }
 
@@ -408,24 +401,22 @@ function zipFiles(files: { id: string, name: string, size: number, content: Read
 
 function init(
   linkId: string,
-  reqPublicKey: Uint8Array,
+  seedPart: Uint8Array,
   encMetadata: Uint8Array,
   seedHash: Uint8Array,
-  publicKey: Uint8Array,
   salt: Uint8Array,
   passwordless: boolean,
   numFiles: number
 ): [Model, cmd.Cmd<Msg>] {
 
   const [passFieldModel, passFieldCmd] = PasswordField.init
-  const [leftPanelModel, leftPanelCmd] = LeftPanel.init(4)
+  const [leftPanelModel, leftPanelCmd] = LeftPanel.init(3)
 
   const model: Model = {
     linkId,
-    reqPublicKey,
+    seedPart,
     encMetadata,
     seedHash,
-    publicKey,
     salt,
     passwordless,
     numFiles,
@@ -441,24 +432,12 @@ function init(
 
   if (passwordless) {
 
-    const getKey: Promise<Msg> =
-      keyval
-        .get<Uint8Array>(linkId, keyval.createStore('blindsend', 'seed'))
-        .then(seed => {
-          const msg: Msg = seed ? ({ type: 'GotSeed', seed }) : ({ type: 'FailedGettingSeed' })
-          return msg
-        })
-        .catch(_ => ({ type: 'FailedGettingSeed' }))
-
     return [
-      { ...model, blockingAction: 'gettingSeed' },
+      { ...model, blockingAction: 'checkingPass' },
       cmd.batch([
         cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
         cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
-        pipe(
-          () => getKey,
-          perform(msg => msg)
-        )
+        checkSeed(seedHash, salt, seedPart)
       ])
     ]
   }
@@ -478,7 +457,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (model.typing === 1) {
         return [
           { ...model, typing: 0, blockingAction: 'checkingPass' },
-          checkPassword(model.publicKey, model.reqPublicKey, model.salt, model.seedHash, model.passFieldModel.value)
+          checkPassword(model.salt, model.seedHash, model.passFieldModel.value)
         ]
       }
 
@@ -501,18 +480,6 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       return [
         { ...model, blockingAction: 'decryptingMetadata', passwordCorrect: true, seed: msg.seed },
         decryptMetadata(metadataKey, model.encMetadata)
-      ]
-    }
-    case 'GotSeed': {
-      return [
-        { ...model, blockingAction: 'checkingPass' },
-        checkSeed(model.publicKey, model.reqPublicKey, model.seedHash, msg.seed)
-      ]
-    }
-    case 'FailedGettingSeed': {
-      return [
-        { ...model, blockingAction: false, seedNotFound: true },
-        cmd.none
       ]
     }
     case 'DecryptedMetadata': {
@@ -687,8 +654,6 @@ const view = (model: Model): Html<Msg> => dispatch => {
       return DecryptingFilesTooltip.view()(dispatch)
     if ((model.blockingAction !== false && ['checkingPass', 'decryptingMetadata', 'gettingSeed'].includes(model.blockingAction)) || model.typing > 0)
       return VerifyingPasswordTooltip.view()(dispatch)
-    else if (model.seedNotFound)
-      return IndexedDbErrorTooltip.view()(dispatch)
     else if (model.decryptionFailed)
       return DecryptionFailedTooltip.view()(dispatch)
     else if (!model.passwordCorrect)

@@ -12,18 +12,17 @@ type Msg =
   | SwitchToSend
   | SwitchToReceive
 
-type CurrentStep = { type: 'PickPass', id: 1 } | { type: 'ExchangeLink', id: 2 } | { type: 'Upload', id: 3 } | { type: 'Download', id: 4 }
+type CurrentStep = { type: 'Upload', id: 1 } | { type: 'ExchangeLink', id: 2 } | { type: 'Download', id: 3 }
 
 type Model = {
   curStep: CurrentStep
 }
 
-const init: (curStep: 1 | 2 | 3 | 4) => [Model, cmd.Cmd<Msg>] = curStep => {
+const init: (curStep: 1 | 2 | 3) => [Model, cmd.Cmd<Msg>] = curStep => {
   switch (curStep) {
-    case 1: return [{ curStep: { type: 'PickPass', id: 1 } }, cmd.none]
+    case 1: return [{ curStep: { type: 'Upload', id: 1 } }, cmd.none]
     case 2: return [{ curStep: { type: 'ExchangeLink', id: 2 } }, cmd.none]
-    case 3: return [{ curStep: { type: 'Upload', id: 3 } }, cmd.none]
-    case 4: return [{ curStep: { type: 'Download', id: 4 } }, cmd.none]
+    case 3: return [{ curStep: { type: 'Download', id: 3 } }, cmd.none]
   }
 }
 
@@ -67,23 +66,16 @@ const view = (model: Model): Html<Msg> => dispatch => {
         <div className="site-nav__img">
           <img src={BlindsendLogo} alt="" />
         </div>
-        {model.curStep.type === 'PickPass' &&
+        {(model.curStep.type === 'Upload' || model.curStep.type === 'ExchangeLink') &&
           <div className="site-tabs__wrap">
-            <div className="site-tabs site-tabs--send" onClick={() => dispatch({ type: 'SwitchToSend' })}>send</div>
-            <div className="site-tabs site-tabs--recieve active" onClick={() => dispatch({ type: 'SwitchToReceive' })}>receive</div>
-          </div>
-        }
-        {model.curStep.type === 'ExchangeLink' &&
-          <div className="site-tabs__wrap">
-            <div className="site-tabs site-tabs--send" onClick={() => dispatch({ type: 'SwitchToSend' })}>send</div>
-            <div className="site-tabs site-tabs--recieve active" onClick={() => dispatch({ type: 'SwitchToReceive' })}>receive</div>
+            <div className="site-tabs site-tabs--send active" onClick={() => dispatch({ type: 'SwitchToSend' })}>send</div>
+            <div className="site-tabs site-tabs--recieve" onClick={() => dispatch({ type: 'SwitchToReceive' })}>receive</div>
           </div>
         }
         <ul id="primary-menu" className="primary-menu">
-          {renderStep(<span className="menu-item-title">Pick <br /> Password</span>, 1)}
+          {renderStep(<span className="menu-item-title">Upload <br /> Files</span>, 1)}
           {renderStep(<span className="menu-item-title">Exchange <br /> Link</span>, 2)}
-          {renderStep(<span className="menu-item-title">Sender<br /> Upload</span>, 3)}
-          {renderStep(<span className="menu-item-title">Download</span>, 4)}
+          {renderStep(<span className="menu-item-title">Download</span>, 3)}
         </ul>
       </div>
       {LegalLinks.view()(dispatch)}

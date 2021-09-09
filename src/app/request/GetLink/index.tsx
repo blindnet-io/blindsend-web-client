@@ -153,7 +153,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'LeftPanelMsg': {
       const [leftPanelModel, leftPanelCmd] = LeftPanel.update(msg.msg, model.leftPanelModel)
 
-      return [model, cmd.none]
+      return [
+        { ...model, leftPanelModel },
+        cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd)
+      ]
     }
     case 'EstimatePass': {
       if (model.passStrength.estimated)

@@ -25,7 +25,7 @@ import * as FileRow from './components/File'
 
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
-type StoredMetadata = { type: 'StoredMetadata', signedUploadLinks: { id: string, link: string }[] }
+type StoredMetadata = { type: 'StoredMetadata', linkId: string, signedUploadLinks: { id: string, link: string }[] }
 type FailStoreMetadata = { type: 'FailStoreMetadata' }
 type UploadInitialized = { type: 'UploadInitialized', fileNum: number, uploadId: string }
 type GotSignedFileLinkParts = { type: 'GotSignedFileLinkParts', fileNum: number, signedFileLinkParts: { id: string, part_links: string[], fin_link: string } }
@@ -34,7 +34,7 @@ type FailUploadingFile = { type: 'FailUploadingFile' }
 type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, chunkNum: number, links: { id: string, part_links: string[], fin_link: string }, state: sodium.StateAddress, offset: number, tag: { chunkNum: string, tag: string } }
 type UploadedFileParts = { type: 'UploadedFileParts', fileNum: number, finLink: string, tag: { chunkNum: string, tag: string } }
 type JoinedFileParts = { type: 'JoinedFileParts', fileNum: number }
-type UploadFinished = { type: 'UploadFinished' }
+type UploadFinished = { type: 'UploadFinished', linkId: string, seed: string }
 
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
@@ -74,9 +74,9 @@ type Model = {
   files: FileData[],
   totalSize: number,
   uploading: boolean,
+  seed?: Uint8Array,
   fileKeys?: Uint8Array[],
-  linkId: string,
-  reqPublicKey: Uint8Array,
+  linkId?: string,
   constraints: Constraints,
   renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig' | 'UploadFailed',
   uploadLinks: { id: string, link: string }[],
@@ -95,27 +95,28 @@ function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
 
 function storeMetadata(
   seedHash: Uint8Array,
-  publicKey: Uint8Array,
   encryptedMetadata: Uint8Array,
   files: { id: string }[],
-  linkId: string
+  passwordless: boolean,
+  salt: Uint8Array
 ): cmd.Cmd<Msg> {
 
-  type Resp = { upload_links: { id: string, link: string }[] }
+  type Resp = { link_id: string, upload_links: { id: string, link: string }[] }
 
   const schema = t.interface({
+    link_id: t.string,
     upload_links: t.array(t.interface({ id: t.string, link: t.string }))
   })
   const body = {
     seed_hash: sodium.to_base64(seedHash),
-    public_key: sodium.to_base64(publicKey),
     encrypted_metadata: sodium.to_base64(encryptedMetadata),
     files: files.map(f => ({ id: f.id, full_upload: false })),
-    link_id: linkId
+    passwordless,
+    salt: sodium.to_base64(salt)
   }
 
   const req = {
-    ...http.post(`${endpoint}/request/store-metadata`, body, fromCodec(schema)),
+    ...http.post(`${endpoint}/send/init-store-metadata`, body, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
   }
 
@@ -124,7 +125,7 @@ function storeMetadata(
       result,
       E.fold<http.HttpError, Resp, Msg>(
         _ => ({ type: 'FailStoreMetadata' }),
-        resp => ({ type: 'StoredMetadata', signedUploadLinks: resp.upload_links })
+        resp => ({ type: 'StoredMetadata', linkId: resp.link_id, signedUploadLinks: resp.upload_links })
       )
     )
   )(req)
@@ -204,7 +205,7 @@ function joinFileParts(fileNum: number, finLink: string, tags: { chunkNum: strin
   )
 }
 
-function finishUpload(linkId: string,): cmd.Cmd<Msg> {
+function finishUpload(linkId: string, seed: string): cmd.Cmd<Msg> {
 
   const schema = t.unknown
   const body = { link_id: linkId }
@@ -219,7 +220,7 @@ function finishUpload(linkId: string,): cmd.Cmd<Msg> {
       result,
       E.fold<http.HttpError, any, Msg>(
         _ => ({ type: 'FailUploadingFile' }),
-        _ => ({ type: 'UploadFinished' })
+        _ => ({ type: 'UploadFinished', linkId, seed })
       )
     )
   )(req)
@@ -233,19 +234,6 @@ function encryptAndUploadFileChunk(
   offset: number,
   state: sodium.StateAddress
 ): cmd.Cmd<Msg> {
-
-  // function handleUpload(chunk: Uint8Array, msg: Msg, last: boolean): Promise<Msg> {
-  //   // TODO: handle backpressure
-  //   return fetch(`${links.part_links[chunkNum]}`, {
-  //     method: 'PUT',
-  //     body: chunk.buffer
-  //   }).then(resp => {
-  //     if (resp.status === 200)
-  //       return msg
-  //     else
-  //       return ({ type: 'FailUploadingFile' })
-  //   })
-  // }
 
   const fileChunkLen = uploadChunkSize - (uploadChunkSize / encryptionChunkSize) * 17
 
@@ -283,8 +271,6 @@ function encryptAndUploadFileChunk(
             else
               return ({ type: 'FailUploadingFile' })
           })
-
-          // return handleUpload(encryptedChunk, ({ type: 'UploadedFileParts', fileNum, finLink: links.fin_link }), true)
         })
     : () =>
       file.file.slice(offset, offset + fileChunkLen).arrayBuffer()
@@ -328,13 +314,9 @@ function encryptAndUploadFileChunk(
   )
 }
 
-const init: (
-  linkId: string,
-  reqPublicKey: Uint8Array,
-  constraints: Constraints
-) => [Model, cmd.Cmd<Msg>] = (linkId, reqPublicKey, constraints) => {
+function init(constraints: Constraints): [Model, cmd.Cmd<Msg>] {
 
-  const [leftPanelModel, leftPanelCmd] = LeftPanel.init(3)
+  const [leftPanelModel, leftPanelCmd] = LeftPanel.init(1)
 
   return [
     {
@@ -344,8 +326,6 @@ const init: (
       leftPanelModel,
       totalSize: 0,
       uploading: false,
-      linkId,
-      reqPublicKey,
       constraints,
       renderError: false,
       uploadFinished: false,
@@ -385,11 +365,20 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'Upload': {
 
-      // X25519, 2x 32 bytes
-      const { publicKey, privateKey } = sodium.crypto_kx_keypair()
-      const { sharedTx: seed } = sodium.crypto_kx_client_session_keys(publicKey, privateKey, model.reqPublicKey)
+      const password = 'asd'
 
-      const seedHash = sodium.crypto_hash(seed)
+      const seed1 = sodium.crypto_kdf_keygen()
+      const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES)
+      const seed2 = sodium.crypto_pwhash(
+        sodium.crypto_kx_SEEDBYTES,
+        password,
+        salt,
+        1,
+        8192,
+        sodium.crypto_pwhash_ALG_DEFAULT
+      )
+
+      const seed = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, concat(seed1, seed2))
 
       const metadataKey = sodium.crypto_kdf_derive_from_key(sodium.crypto_secretbox_KEYBYTES, 1, 'metadata', seed)
 
@@ -401,7 +390,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           seed
         ))
 
+      const seedHash = sodium.crypto_hash(seed)
+
       const files = model.files.filter(f => !f.tooBig)
+
       const encStates = files.map((_, i) => sodium.crypto_secretstream_xchacha20poly1305_init_push(fileKeys[i]))
 
       const metadata = files.map((f, i) => ({
@@ -424,11 +416,12 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           ...model,
           files,
           uploading: true,
+          seed,
           fileKeys,
           encStates,
           renderError: false
         },
-        storeMetadata(seedHash, publicKey, concat(iv, encryptedMetadata), files.map(f => ({ id: f.id })), model.linkId)
+        storeMetadata(seedHash, concat(iv, encryptedMetadata), files.map(f => ({ id: f.id })), password.length === 0, salt)
       ]
     }
     case 'FailStoreMetadata': {
@@ -440,7 +433,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'StoredMetadata': {
 
       return [
-        { ...model, uploadLinks: msg.signedUploadLinks },
+        { ...model, linkId: msg.linkId, uploadLinks: msg.signedUploadLinks },
         initUpload(msg.signedUploadLinks[0].link, 0)
       ]
     }
@@ -501,6 +494,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'JoinedFileParts': {
+      if (!model.linkId || !model.seed) throw new Error('Wrong state')
 
       const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 100 } : f)
       const nextFileNum = msg.fileNum + 1
@@ -508,7 +502,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (nextFileNum == model.files.length) {
         return [
           { ...model, files, tags: [] },
-          finishUpload(model.linkId)
+          finishUpload(model.linkId, sodium.to_base64(model.seed))
         ]
       }
 
@@ -534,7 +528,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'LeftPanelMsg': {
       const [leftPanelModel, leftPanelCmd] = LeftPanel.update(msg.msg, model.leftPanelModel)
 
-      return [model, cmd.none]
+      return [
+        { ...model, leftPanelModel },
+        cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd)
+      ]
     }
     case 'FileMsg': {
       if (msg.msg.type === 'Remove') {

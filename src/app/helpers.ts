@@ -27,3 +27,10 @@ export function uuidv4() {
     (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
   );
 }
+
+export function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
+  var tmp = new Uint8Array(arr1.byteLength + arr2.byteLength);
+  tmp.set(arr1, 0)
+  tmp.set(arr2, arr1.byteLength)
+  return tmp;
+}

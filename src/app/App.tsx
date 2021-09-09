@@ -11,6 +11,7 @@ import { promiseToCmd } from './helpers'
 
 import { fromCodec } from './helpers'
 import * as Request from './request/Request'
+import * as Send from './send/Send'
 
 import * as LoadingScreen from './components/LoadingScreen'
 import * as ErrorScreen from './components/ErrorScreen'
@@ -21,6 +22,7 @@ type FailGetStatus = { type: 'FailGetStatus' }
 type GotStatus = { type: 'GotStatus', workflow: string, stage: string }
 
 type RequestMsg = { type: 'RequestMsg', msg: Request.Msg }
+type SendMsg = { type: 'SendMsg', msg: Send.Msg }
 
 type Msg =
   | InitializedLibsodium
@@ -29,9 +31,11 @@ type Msg =
   | GotStatus
 
   | RequestMsg
+  | SendMsg
 
 type InitializedModel =
   | { type: 'Ready', screen: { type: 'Request', model: Request.Model } }
+  | { type: 'Ready', screen: { type: 'Send', model: Send.Model } }
 
 type Model =
   | { type: 'Loading', linkId?: string, key?: Uint8Array }
@@ -90,12 +94,20 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         ]
       }
 
-      const [requestModel, requestCmd] = Request.init('0')
+      // const [requestModel, requestCmd] = Request.init('0')
+
+      // return [
+      //   { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+      //   cmd.batch([
+      //     cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+      //   ])
+      // ]
+      const [sendModel, sendCmd] = Send.init('0')
 
       return [
-        { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+        { type: 'Ready', screen: { type: 'Send', model: sendModel } },
         cmd.batch([
-          cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+          cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
         ])
       ]
     }
@@ -133,11 +145,43 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     case 'RequestMsg': {
       if (model.type != 'Ready' || model.screen.type != 'Request') throw new Error('wrong state')
 
+      if (msg.msg.type === 'GetLinkMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToSend') {
+        const [sendModel, sendCmd] = Send.init('0')
+
+        return [
+          { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+          cmd.batch([
+            cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+          ])
+        ]
+      }
+
       const [requestModel, requestCmd] = Request.update(msg.msg, model.screen.model)
 
       return [
         { ...model, screen: { ...model.screen, model: requestModel } },
         cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+      ]
+    }
+    case 'SendMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'Send') throw new Error('wrong state')
+
+      if (msg.msg.type === 'UploadFilesMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToReceive') {
+        const [requestModel, requestCmd] = Request.init('0')
+
+        return [
+          { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+          cmd.batch([
+            cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+          ])
+        ]
+      }
+
+      const [sendModel, sendCmd] = Send.update(msg.msg, model.screen.model)
+
+      return [
+        { ...model, screen: { ...model.screen, model: sendModel } },
+        cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
       ]
     }
   }
@@ -150,6 +194,7 @@ function view(model: Model): Html<Msg> {
     function renderScreen(model: InitializedModel) {
       switch (model.screen.type) {
         case 'Request': return Request.view(model.screen.model)(msg => dispatch({ type: 'RequestMsg', msg }))
+        case 'Send': return Send.view(model.screen.model)(msg => dispatch({ type: 'SendMsg', msg }))
       }
     }
 
