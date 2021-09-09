@@ -38,7 +38,7 @@ type InitializedModel =
   | { type: 'Ready', screen: { type: 'Send', model: Send.Model } }
 
 type Model =
-  | { type: 'Loading', linkId?: string, key?: Uint8Array }
+  | { type: 'Loading', linkId?: string, seed?: Uint8Array }
   | InitializedModel
   | { type: 'Error' }
 
@@ -84,12 +84,12 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     case 'InitializedLibsodium': {
       if (model.type === 'Error') throw new Error('Not possible')
 
-      const [linkIdWithHash, key] = window.location.hash.split(';')
+      const [linkIdWithHash, seed] = window.location.hash.split(';')
       const linkId = linkIdWithHash.substr(1)
 
-      if (linkId != null && key != null) {
+      if (linkId != null && seed != null) {
         return [
-          { type: 'Loading', linkId, key: sodium.from_base64(key) },
+          { type: 'Loading', linkId, seed: sodium.from_base64(seed) },
           getLinkStatus(linkId)
         ]
       }
@@ -129,12 +129,22 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
 
       switch (msg.workflow) {
         case 'r': {
-          const [requestModel, requestCmd] = Request.init(msg.stage, model.linkId, model.key)
+          const [requestModel, requestCmd] = Request.init(msg.stage, model.linkId, model.seed)
 
           return [
             { type: 'Ready', screen: { type: 'Request', model: requestModel } },
             cmd.batch([
               cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+            ])
+          ]
+        }
+        case 's': {
+          const [sendModel, sendCmd] = Send.init(msg.stage, model.linkId, model.seed)
+
+          return [
+            { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+            cmd.batch([
+              cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
             ])
           ]
         }

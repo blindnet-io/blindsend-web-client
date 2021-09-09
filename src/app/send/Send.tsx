@@ -18,20 +18,18 @@ import * as TermsAndConditions from '../components/legal/TermsAndCondidions'
 
 import { fromCodec } from '../helpers'
 import * as UploadFiles from './UploadFiles'
+import * as DownloadFiles from './DownloadFiles'
 import * as ExchangeLink from './ExchangeLink'
 
 import * as LoadingScreen from './../components/LoadingScreen'
 import * as ErrorScreen from '../components/ErrorScreen'
 
-type GotMetadata = {
-  type: 'GotMetadata', metadata: {
-    encMetadata: string, seedHash: string, salt: string, numFiles: number
-  }
-}
+type GotMetadata = { type: 'GotMetadata', encMetadata: string, seedHash: string, salt: string, passwordless: boolean, numFiles: number }
 type FailGetMetadata = { type: 'FailGetMetadata' }
 
 type UploadFilesMsg = { type: 'UploadFilesMsg', msg: UploadFiles.Msg }
 type ExchangeLinkMsg = { type: 'ExchangeLinkMsg', msg: ExchangeLink.Msg }
+type DownloadFilesMsg = { type: 'DownloadFilesMsg', msg: DownloadFiles.Msg }
 
 type Msg =
   | GotMetadata
@@ -39,13 +37,15 @@ type Msg =
 
   | UploadFilesMsg
   | ExchangeLinkMsg
+  | DownloadFilesMsg
 
 type InitializedModel =
   | { type: 'Ready', screen: { type: 'UploadFiles', model: UploadFiles.Model } }
   | { type: 'Ready', screen: { type: 'ExchangeLink', model: ExchangeLink.Model } }
+  | { type: 'Ready', screen: { type: 'DownloadFiles', model: DownloadFiles.Model } }
 
 type Model =
-  | { type: 'Loading', linkId: string, key: Uint8Array }
+  | { type: 'Loading', linkId: string, seed: Uint8Array }
   | InitializedModel
   | { type: 'Error' }
 
@@ -56,7 +56,7 @@ const uploadConstraints = {
 }
 
 function getMetadata(linkId: string) {
-  type Resp = { enc_metadata: string, seed_hash: string, salt: string, num_files: number }
+  type Resp = { enc_metadata: string, seed_hash: string, salt: string, passwordless: boolean, num_files: number }
 
   const schema = t.interface({
     enc_metadata: t.string,
@@ -75,7 +75,11 @@ function getMetadata(linkId: string) {
         _ => ({ type: 'FailGetMetadata' }),
         resp => ({
           type: 'GotMetadata',
-          metadata: { encMetadata: resp.enc_metadata, seedHash: resp.seed_hash, salt: resp.salt, numFiles: resp.num_files }
+          encMetadata: resp.enc_metadata,
+          seedHash: resp.seed_hash,
+          salt: resp.salt,
+          passwordless: resp.passwordless,
+          numFiles: resp.num_files
         })
       )
     )
@@ -98,19 +102,17 @@ function init(
         ])
       ]
     }
-    // case '1': {
-    //   if (seed === undefined || linkId === undefined)
-    //     throw new Error('Wrong state')
+    case '2': {
+      if (seed === undefined || linkId === undefined)
+        throw new Error('Wrong state')
 
-    //   const [uploadFilesModel, uploadFilesCmd] = UploadFiles.init(linkId, key, uploadConstraints)
-
-    //   return [
-    //     { type: 'Ready', screen: { type: 'UploadFiles', model: uploadFilesModel } },
-    //     cmd.batch([
-    //       cmd.map<UploadFiles.Msg, Msg>(msg => ({ type: 'UploadFilesMsg', msg }))(uploadFilesCmd)
-    //     ])
-    //   ]
-    // }
+      return [
+        { type: 'Loading', linkId, seed },
+        cmd.batch([
+          getMetadata(linkId)
+        ])
+      ]
+    }
     default:
       throw new Error('undexpected link status')
   }
@@ -122,23 +124,22 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       if (model.type != 'Loading')
         throw new Error('unexpected state')
 
-      // const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
-      //   model.linkId,
-      //   model.key,
-      //   sodium.from_base64(msg.metadata.encMetadata),
-      //   sodium.from_base64(msg.metadata.seedHash),
-      //   sodium.from_base64(msg.metadata.salt),
-      //   msg.metadata.numFiles
-      // )
+      const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
+        model.linkId,
+        model.seed,
+        sodium.from_base64(msg.encMetadata),
+        sodium.from_base64(msg.seedHash),
+        sodium.from_base64(msg.salt),
+        msg.passwordless,
+        msg.numFiles
+      )
 
-      // return [
-      //   { type: 'Ready', screen: { type: 'DownloadFiles', model: downloadFilesModel } },
-      //   cmd.batch([
-      //     cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
-      //   ])
-      // ]
-
-      return [model, cmd.none]
+      return [
+        { type: 'Ready', screen: { type: 'DownloadFiles', model: downloadFilesModel } },
+        cmd.batch([
+          cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
+        ])
+      ]
     }
     case 'FailGetMetadata': {
       return [
@@ -179,16 +180,16 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         cmd.map<ExchangeLink.Msg, Msg>(msg => ({ type: 'ExchangeLinkMsg', msg }))(exchangeLinkCmd)
       ]
     }
-    // case 'DownloadFilesMsg': {
-    //   if (model.type != 'Ready' || model.screen.type != 'DownloadFiles') throw new Error('wrong state')
+    case 'DownloadFilesMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'DownloadFiles') throw new Error('wrong state')
 
-    //   const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.update(msg.msg, model.screen.model)
+      const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.update(msg.msg, model.screen.model)
 
-    //   return [
-    //     { ...model, screen: { ...model.screen, model: downloadFilesModel } },
-    //     cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
-    //   ]
-    // }
+      return [
+        { ...model, screen: { ...model.screen, model: downloadFilesModel } },
+        cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
+      ]
+    }
   }
 }
 
@@ -202,6 +203,7 @@ function view(model: Model): Html<Msg> {
         switch (model.screen.type) {
           case 'UploadFiles': return UploadFiles.view(model.screen.model)(msg => dispatch({ type: 'UploadFilesMsg', msg }))
           case 'ExchangeLink': return ExchangeLink.view(model.screen.model)(msg => dispatch({ type: 'ExchangeLinkMsg', msg }))
+          case 'DownloadFiles': return DownloadFiles.view(model.screen.model)(msg => dispatch({ type: 'DownloadFilesMsg', msg }))
         }
       }
 

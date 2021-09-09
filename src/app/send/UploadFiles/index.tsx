@@ -365,11 +365,11 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'Upload': {
 
-      const password = 'asd'
+      const password = ''
 
-      const seed1 = sodium.crypto_kdf_keygen()
+      const seedLink = sodium.crypto_kdf_keygen()
       const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES)
-      const seed2 = sodium.crypto_pwhash(
+      const seedPass = sodium.crypto_pwhash(
         sodium.crypto_kx_SEEDBYTES,
         password,
         salt,
@@ -378,7 +378,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         sodium.crypto_pwhash_ALG_DEFAULT
       )
 
-      const seed = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, concat(seed1, seed2))
+      const seed = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, concat(seedLink, seedPass))
 
       const metadataKey = sodium.crypto_kdf_derive_from_key(sodium.crypto_secretbox_KEYBYTES, 1, 'metadata', seed)
 
@@ -416,7 +416,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           ...model,
           files,
           uploading: true,
-          seed,
+          seed: seedLink,
           fileKeys,
           encStates,
           renderError: false

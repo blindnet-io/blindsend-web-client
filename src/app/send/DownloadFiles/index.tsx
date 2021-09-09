@@ -85,7 +85,7 @@ type BlockingAction = false | 'gettingSeed' | 'checkingPass' | 'decryptingMetada
 
 type Model = {
   linkId: string,
-  seedPart: Uint8Array,
+  seedLink: Uint8Array,
   encMetadata: Uint8Array,
   seedHash: Uint8Array,
   salt: Uint8Array,
@@ -114,10 +114,11 @@ type Model = {
 function checkPassword(
   salt: Uint8Array,
   seedHash: Uint8Array,
+  seedLink: Uint8Array,
   pass: string
 ): cmd.Cmd<Msg> {
 
-  const seed = sodium.crypto_pwhash(
+  const seedPass = sodium.crypto_pwhash(
     sodium.crypto_kx_SEEDBYTES,
     pass,
     salt,
@@ -126,25 +127,16 @@ function checkPassword(
     sodium.crypto_pwhash_ALG_DEFAULT
   )
 
-  return checkSeed(seedHash, salt, seed)
+  return checkSeed(seedHash, seedLink, seedPass)
 }
 
 function checkSeed(
   seedHash: Uint8Array,
-  salt: Uint8Array,
-  seedPart: Uint8Array
+  seedLink: Uint8Array,
+  seedPass: Uint8Array
 ): cmd.Cmd<Msg> {
 
-  const seed2 = sodium.crypto_pwhash(
-    sodium.crypto_kx_SEEDBYTES,
-    '',
-    salt,
-    1,
-    8192,
-    sodium.crypto_pwhash_ALG_DEFAULT
-  )
-
-  const seed = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, concat(seedPart, seed2))
+  const seed = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, concat(seedLink, seedPass))
 
   const newSeedHash = sodium.crypto_hash(seed)
 
@@ -401,7 +393,7 @@ function zipFiles(files: { id: string, name: string, size: number, content: Read
 
 function init(
   linkId: string,
-  seedPart: Uint8Array,
+  seedLink: Uint8Array,
   encMetadata: Uint8Array,
   seedHash: Uint8Array,
   salt: Uint8Array,
@@ -414,7 +406,7 @@ function init(
 
   const model: Model = {
     linkId,
-    seedPart,
+    seedLink,
     encMetadata,
     seedHash,
     salt,
@@ -437,7 +429,7 @@ function init(
       cmd.batch([
         cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
         cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
-        checkSeed(seedHash, salt, seedPart)
+        checkPassword(salt, seedHash, seedLink, '')
       ])
     ]
   }
@@ -457,7 +449,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (model.typing === 1) {
         return [
           { ...model, typing: 0, blockingAction: 'checkingPass' },
-          checkPassword(model.salt, model.seedHash, model.passFieldModel.value)
+          checkPassword(model.salt, model.seedHash, model.seedLink, model.passFieldModel.value)
         ]
       }
 
