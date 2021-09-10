@@ -27,13 +27,11 @@ type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
 type StoredMetadata = { type: 'StoredMetadata', linkId: string, signedUploadLinks: { id: string, link: string }[] }
 type FailStoreMetadata = { type: 'FailStoreMetadata' }
-type UploadInitialized = { type: 'UploadInitialized', fileNum: number, uploadId: string }
-type GotSignedFileLinkParts = { type: 'GotSignedFileLinkParts', fileNum: number, signedFileLinkParts: { id: string, part_links: string[], fin_link: string } }
+type UploadInitialized = { type: 'UploadInitialized', fileNum: number, sessionUri: string }
 type FailUploadingFile = { type: 'FailUploadingFile' }
 
-type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, chunkNum: number, links: { id: string, part_links: string[], fin_link: string }, state: sodium.StateAddress, offset: number, tag: { chunkNum: string, tag: string } }
-type UploadedFileParts = { type: 'UploadedFileParts', fileNum: number, finLink: string, tag: { chunkNum: string, tag: string } }
-type JoinedFileParts = { type: 'JoinedFileParts', fileNum: number }
+type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, sessionUri: string, state: sodium.StateAddress, offset: number, uploaded: number }
+type UploadedFile = { type: 'UploadedFile', fileNum: number }
 type UploadFinished = { type: 'UploadFinished', linkId: string, seed: string }
 
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
@@ -47,9 +45,7 @@ type Msg =
   | UploadInitialized
   | FailUploadingFile
   | UploadFileChunk
-  | UploadedFileParts
-  | GotSignedFileLinkParts
-  | JoinedFileParts
+  | UploadedFile
   | UploadFinished
 
   | LeftPanelMsg
@@ -81,9 +77,7 @@ type Model = {
   renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig' | 'UploadFailed',
   uploadLinks: { id: string, link: string }[],
   encStates: { state: sodium.StateAddress, header: Uint8Array }[]
-  uploadFinished: boolean,
-
-  tags: { chunkNum: string, tag: string }[]
+  uploadFinished: boolean
 }
 
 function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
@@ -131,76 +125,26 @@ function storeMetadata(
   )(req)
 }
 
-function initUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
+function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
 
   const init: () => Promise<Msg> = () =>
     fetch(link, {
       method: 'POST',
       headers: {
-        'Content-Length': '0'
+        'Content-Length': '0',
+        'x-goog-resumable': 'start'
       }
     }).then<Msg>(resp => {
-      if (resp.status === 200)
-        return resp.text().then(xml => {
-          const uploadId = xml.substring(xml.indexOf("<UploadId>") + 10, xml.indexOf("</UploadId>"))
-          return ({ type: 'UploadInitialized', fileNum, uploadId })
-        })
+      if (resp.status === 201) {
+        const sessionUri = resp.headers.get('Location')!
+        return ({ type: 'UploadInitialized', fileNum, sessionUri })
+      }
       else
         return ({ type: 'FailUploadingFile' })
     }).catch(_ => ({ type: 'FailUploadingFile' }))
 
   return pipe(
     () => init(),
-    perform(msg => msg)
-  )
-}
-
-function getSignedLinks(uploadId: string, fileId: string, parts: number, fileNum: number): cmd.Cmd<Msg> {
-
-  type Resp = { files: { id: string, part_links: string[], fin_link: string }[] }
-
-  const schema = t.interface({
-    files: t.array(t.interface({ id: t.string, part_links: t.array(t.string), fin_link: t.string }))
-  })
-  const body = {
-    files: [{ upload_id: uploadId, file_id: fileId, parts }]
-  }
-
-  const req = {
-    ...http.post(`${endpoint}/sign-upload-parts`, body, fromCodec(schema)),
-    headers: { 'Content-Type': 'application/json' }
-  }
-
-  return http.send<Resp, Msg>(result =>
-    pipe(
-      result,
-      E.fold<http.HttpError, Resp, Msg>(
-        _ => ({ type: 'FailUploadingFile' }),
-        resp => ({ type: 'GotSignedFileLinkParts', fileNum, signedFileLinkParts: resp.files[0] })
-      )
-    )
-  )(req)
-}
-
-function joinFileParts(fileNum: number, finLink: string, tags: { chunkNum: string, tag: string }[]): cmd.Cmd<Msg> {
-  const body = '<CompleteMultipartUpload>' + tags.reduce((acc, cur) => `${acc}<Part><PartNumber>${cur.chunkNum}</PartNumber><ETag>"${cur.tag}"</ETag></Part>`, '') + '</CompleteMultipartUpload>'
-
-  const req: () => Promise<Msg> = () =>
-    fetch(finLink, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/xml'
-      },
-      body
-    }).then<Msg>(resp => {
-      if (resp.status === 200)
-        return ({ type: 'JoinedFileParts', fileNum })
-      else
-        return ({ type: 'FailUploadingFile' })
-    }).catch<Msg>(_ => ({ type: 'FailUploadingFile' }))
-
-  return pipe(
-    () => req(),
     perform(msg => msg)
   )
 }
@@ -228,10 +172,10 @@ function finishUpload(linkId: string, seed: string): cmd.Cmd<Msg> {
 
 function encryptAndUploadFileChunk(
   fileNum: number,
-  chunkNum: number,
-  links: { id: string, part_links: string[], fin_link: string },
+  sessionUri: string,
   file: FileData,
   offset: number,
+  uploaded: number,
   state: sodium.StateAddress
 ): cmd.Cmd<Msg> {
 
@@ -260,14 +204,16 @@ function encryptAndUploadFileChunk(
           const last = sodium.crypto_secretstream_xchacha20poly1305_push(state, new Uint8Array(), null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL)
           encryptedChunk.set(last, t)
 
-          return fetch(`${links.part_links[chunkNum - 1]}`, {
+          return fetch(sessionUri, {
             method: 'PUT',
+            headers: {
+              'Content-Length': `${uploadChunkSize}`,
+              'Content-Range': `bytes ${uploaded}-${uploaded + encryptedChunk.length - 1}/${uploaded + encryptedChunk.length}`
+            },
             body: encryptedChunk
           }).then(resp => {
-            if (resp.status === 200) {
-              const tag = resp.headers.get('etag') || '""'
-              return ({ type: 'UploadedFileParts', fileNum, finLink: links.fin_link, tag: { chunkNum: chunkNum.toString(), tag: tag.substring(1, tag.length - 1) } })
-            }
+            if (resp.status === 200)
+              return ({ type: 'UploadedFile', fileNum })
             else
               return ({ type: 'FailUploadingFile' })
           })
@@ -289,23 +235,27 @@ function encryptAndUploadFileChunk(
             t += encryptedEncChunk.length
           }
 
-          return fetch(`${links.part_links[chunkNum - 1]}`, {
+          return fetch(sessionUri, {
             method: 'PUT',
+            headers: {
+              'Content-Length': `${uploadChunkSize}`,
+              'Content-Range': `bytes ${uploaded}-${uploaded + encryptedChunk.length - 1}/*`
+            },
             body: encryptedChunk
           }).then(resp => {
-            if (resp.status === 200) {
-              const tag = resp.headers.get('ETag') || ''
-              return ({ type: 'UploadFileChunk', fileNum, chunkNum: chunkNum + 1, links, state, offset: offset + fileChunkLen, tag: { chunkNum: chunkNum.toString(), tag } })
+            if (resp.status === 308) {
+              return ({
+                type: 'UploadFileChunk',
+                fileNum,
+                sessionUri,
+                state,
+                offset: offset + fileChunkLen,
+                uploaded: uploaded + encryptedChunk.length
+              })
             }
             else
               return ({ type: 'FailUploadingFile' })
           })
-
-          // return handleUpload(
-          //   encryptedChunk,
-          //   ({ type: 'UploadFileChunk', fileNum, chunkNum: chunkNum + 1, links, state, offset: offset + fileChunkLen }),
-          //   false
-          // )
         })
 
   return pipe(
@@ -328,9 +278,7 @@ function init(constraints: Constraints): [Model, cmd.Cmd<Msg>] {
       uploading: false,
       constraints,
       renderError: false,
-      uploadFinished: false,
-
-      tags: []
+      uploadFinished: false
     },
     cmd.batch([
       cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
@@ -434,20 +382,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       return [
         { ...model, linkId: msg.linkId, uploadLinks: msg.signedUploadLinks },
-        initUpload(msg.signedUploadLinks[0].link, 0)
+        initStorageResumableUpload(msg.signedUploadLinks[0].link, 0)
       ]
     }
     case 'UploadInitialized': {
-
-      const file = model.files[msg.fileNum]
-      const parts = Math.ceil(file.file.size / uploadChunkSize)
-
-      return [
-        { ...model },
-        getSignedLinks(msg.uploadId, file.id, parts, msg.fileNum)
-      ]
-    }
-    case 'GotSignedFileLinkParts': {
 
       const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 1 } : f)
 
@@ -455,9 +393,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         { ...model, files },
         encryptAndUploadFileChunk(
           msg.fileNum,
-          1,
-          msg.signedFileLinkParts,
+          msg.sessionUri,
           model.files[msg.fileNum],
+          0,
           0,
           model.encStates[msg.fileNum].state
         )
@@ -472,43 +410,32 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       )
 
       return [
-        { ...model, files, tags: [...model.tags, msg.tag] },
+        { ...model, files },
         encryptAndUploadFileChunk(
           msg.fileNum,
-          msg.chunkNum,
-          msg.links,
+          msg.sessionUri,
           model.files[msg.fileNum],
           msg.offset,
+          msg.uploaded,
           msg.state
         )
       ]
     }
-    case 'UploadedFileParts': {
-
-      const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 95 } : f)
-      const tags = [...model.tags, msg.tag]
-
-      return [
-        { ...model, files, tags },
-        joinFileParts(msg.fileNum, msg.finLink, tags)
-      ]
-    }
-    case 'JoinedFileParts': {
-      if (!model.linkId || !model.seed) throw new Error('Wrong state')
+    case 'UploadedFile': {
 
       const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 100 } : f)
       const nextFileNum = msg.fileNum + 1
 
       if (nextFileNum == model.files.length) {
         return [
-          { ...model, files, tags: [] },
-          finishUpload(model.linkId, sodium.to_base64(model.seed))
+          { ...model, files },
+          finishUpload(model.linkId!, sodium.to_base64(model.seed!))
         ]
       }
 
       return [
-        { ...model, files, tags: [] },
-        initUpload(model.uploadLinks[nextFileNum].link, nextFileNum)
+        { ...model, files },
+        initStorageResumableUpload(model.uploadLinks[nextFileNum].link, nextFileNum)
       ]
     }
     case 'UploadFinished': {
@@ -520,7 +447,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'FailUploadingFile': {
       const files = model.files.map(f => ({ ...f, progress: 0, complete: false }))
       return [
-        { ...model, files, uploading: false, tags: [], renderError: 'UploadFailed' },
+        { ...model, files, uploading: false, renderError: 'UploadFailed' },
         cmd.none
       ]
     }
