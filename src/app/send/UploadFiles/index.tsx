@@ -11,8 +11,9 @@ import filesize from 'filesize'
 
 import { endpoint, uploadChunkSize, encryptionChunkSize } from '../../globals'
 
-import * as LeftPanel from '../components/LeftPanel'
 import { fromCodec, uuidv4 } from '../../helpers'
+import * as PasswordField from '../../components/PasswordField'
+import * as LeftPanel from '../components/LeftPanel'
 import * as HowToTooltip from './tooltip/HowTo'
 import * as FileTooBigTooltip from './tooltip/FileTooBig'
 import * as TooManyFilesTooltip from './tooltip/TooManyFiles'
@@ -34,6 +35,7 @@ type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, sessionUri: s
 type UploadedFile = { type: 'UploadedFile', fileNum: number }
 type UploadFinished = { type: 'UploadFinished', linkId: string, seed: string }
 
+type PasswordFieldMsg = { type: 'PasswordFieldMsg', msg: PasswordField.Msg }
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
 
@@ -48,6 +50,7 @@ type Msg =
   | UploadedFile
   | UploadFinished
 
+  | PasswordFieldMsg
   | LeftPanelMsg
   | FileMsg
 
@@ -66,6 +69,7 @@ type FileData = {
 }
 
 type Model = {
+  passFieldModel: PasswordField.Model,
   leftPanelModel: LeftPanel.Model,
   files: FileData[],
   totalSize: number,
@@ -266,6 +270,7 @@ function encryptAndUploadFileChunk(
 
 function init(constraints: Constraints): [Model, cmd.Cmd<Msg>] {
 
+  const [passFieldModel, passFieldCmd] = PasswordField.init
   const [leftPanelModel, leftPanelCmd] = LeftPanel.init(1)
 
   return [
@@ -273,12 +278,13 @@ function init(constraints: Constraints): [Model, cmd.Cmd<Msg>] {
       files: [],
       encStates: [],
       uploadLinks: [],
-      leftPanelModel,
       totalSize: 0,
       uploading: false,
       constraints,
       renderError: false,
-      uploadFinished: false
+      uploadFinished: false,
+      passFieldModel,
+      leftPanelModel,
     },
     cmd.batch([
       cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
@@ -313,7 +319,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'Upload': {
 
-      const password = ''
+      const password = model.passFieldModel.value
 
       const seedLink = sodium.crypto_kdf_keygen()
       const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES)
@@ -452,6 +458,14 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
 
+    case 'PasswordFieldMsg': {
+      const [passFieldModel, passFieldCmd] = PasswordField.update(msg.msg, model.passFieldModel)
+
+      return [
+        { ...model, passFieldModel },
+        cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd)
+      ]
+    }
     case 'LeftPanelMsg': {
       const [leftPanelModel, leftPanelCmd] = LeftPanel.update(msg.msg, model.leftPanelModel)
 
@@ -552,6 +566,8 @@ const view = (model: Model): Html<Msg> => dispatch => {
                       document.getElementById('file-pick')?.click()
                   }}>BROWSE</a>
               </span>
+
+              {PasswordField.view(model.passFieldModel)(msg => dispatch({ type: 'PasswordFieldMsg', msg }))}
 
               <div className={model.files.length === 0 || model.uploading || model.uploadFinished ? "btn-wrap disabled" : "btn-wrap"}>
                 <input
