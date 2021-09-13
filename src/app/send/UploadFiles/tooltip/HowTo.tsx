@@ -7,7 +7,11 @@ import MailIcon from '../../../../images/mail.svg'
 
 SwiperCore.use([Pagination])
 
-const view = (): Html<any> => _ => {
+const view = (
+  fileSizeLimit: string,
+  totalSizeLimit: string,
+  numOfFilesLimit: number
+): Html<any> => _ => {
 
   const mobile =
     <Swiper
@@ -18,10 +22,16 @@ const view = (): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Drop your files here and protect them with a password. When you are ready, click “<b>SEND</b>”.</p>
+        <p className="tooltip__content-text">Drop your files here and protect them with password. When you are ready, click <b>SEND</b>.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">Your files will be encrypted on your machine using the password as a seed for an encryption key.</p>
+        <p className="tooltip__content-text">You can upload up to <b>{numOfFilesLimit}</b> files.<br />Individual file size limit is <b>{fileSizeLimit}</b> and total limit is <b>{totalSizeLimit}</b>.</p>
+      </SwiperSlide>
+      <SwiperSlide>
+        <p className="tooltip__content-text">Your files will be encrypted on your machine using a key derived from password.</p>
+      </SwiperSlide>
+      <SwiperSlide>
+        <p className="tooltip__content-text">Only the ones know the password will be able to decrypt the files.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -29,8 +39,10 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Drop your files here and protect them with a password. When you are ready, click “<b>SEND</b>”.</p>
-          <p className="tooltip__content-text">Your files will be encrypted on your machine using the password as a seed for an encryption key.</p>
+          <p className="tooltip__content-text">Drop your files here and protect them with password. When you are ready, click <b>SEND</b>.</p>
+          <p className="tooltip__content-text">You can upload up to <b>{numOfFilesLimit}</b> files.<br />Individual file size limit is <b>{fileSizeLimit}</b> and total limit is <b>{totalSizeLimit}</b>.</p>
+          <p className="tooltip__content-text">Your files will be encrypted in the browser using a key derived from password.</p>
+          <p className="tooltip__content-text">Only the ones know the password will be able to decrypt the files.</p>
         </div>
       </div>
     </div>
@@ -42,7 +54,7 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__img">
             <img src={MailIcon} alt="" />
           </div>
-          <h2 className="tooltip__title section-title">Encrypted file exchange</h2>
+          <h2 className="tooltip__title section-title">Encrypt and send files</h2>
           {window.matchMedia('(max-width: 1099px)').matches ? mobile : desktop}
         </div>
       </div>

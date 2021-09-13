@@ -12,7 +12,7 @@ import { endpoint, encryptionChunkSize } from '../../globals'
 
 import * as LeftPanel from '../components/LeftPanel'
 import * as PasswordField from '../../components/PasswordField'
-import * as FileRow from './components/File'
+import * as FileRow from '../../components/FileDownload'
 
 import { fromCodec, concat } from '../../helpers'
 import * as FilesReadyTooltip from './tooltip/FilesReady'
@@ -41,8 +41,6 @@ if (MITM != null) {
 const toPolyfillReadable = streamAdapter.createReadableStreamWrapper(ReadableStream)
 const toPolyfillWritable = streamAdapter.createWritableStreamWrapper(WritableStream)
 const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(TransformStream)
-
-
 
 type CheckPassword = { type: 'CheckPassword' }
 type PassNotOk = { type: 'PassNotOk' }
@@ -77,6 +75,7 @@ type Msg =
   | FailedDownloadArchive
   | FileDecrypted
   | FileDownloaded
+
   | PasswordFieldMsg
   | LeftPanelMsg
   | FileMsg
@@ -502,6 +501,13 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'DownloadAll': {
       if (!model.files) throw new Error('Wrong state')
       const files = model.files.map(f => ({ ...f, downloading: true }))
+
+      if (files.length === 1) {
+        return [
+          { ...model, files, blockingAction: 'downloadingFiles' },
+          getSignedDownloadLink(files[0].id, -1)
+        ]
+      }
 
       return [
         { ...model, files, blockingAction: 'downloadingFiles' },

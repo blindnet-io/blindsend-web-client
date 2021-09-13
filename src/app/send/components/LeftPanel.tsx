@@ -64,7 +64,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
     <div className="site-nav__wrap col-lg-2">
       <div className="site-nav">
         <div className="site-nav__img">
-          <img src={BlindsendLogo} alt="" />
+          <a href="/" style={{ 'borderBottom': 'none' }}><img src={BlindsendLogo} alt="" /></a>
         </div>
         {(model.curStep.type === 'Upload' || model.curStep.type === 'ExchangeLink') &&
           <div className="site-tabs__wrap">

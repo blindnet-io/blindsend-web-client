@@ -20,7 +20,7 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">Please don't close the tab until the download is finished.</p>
+                <p className="tooltip__content-text">Please don't close the tab until the files are decrypted.</p>
               </div>
             </div>
           </div>

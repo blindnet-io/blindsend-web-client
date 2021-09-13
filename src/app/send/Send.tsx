@@ -7,22 +7,21 @@ import { Html } from 'elm-ts/lib/React'
 import * as sodium from 'libsodium-wrappers'
 
 import { endpoint } from '../globals'
+import { fromCodec } from '../helpers'
+
+import * as UploadFiles from './UploadFiles'
+import * as DownloadFiles from './DownloadFiles'
+import * as ExchangeLink from './ExchangeLink'
 
 import BlindsendLogo from '../../images/blindsend.svg'
+import * as LoadingScreen from './../components/LoadingScreen'
+import * as ErrorScreen from '../components/ErrorScreen'
 import * as MainNavigation from '../components/MainNavigation'
 import * as Footer from '../components/Footer'
 import * as LegalLinks from '../components/legal/LegalLinks'
 import * as PrivacyPolicy from '../components/legal/PrivacyPolicy'
 import * as LegalMentions from '../components/legal/LegalMentions'
 import * as TermsAndConditions from '../components/legal/TermsAndCondidions'
-
-import { fromCodec } from '../helpers'
-import * as UploadFiles from './UploadFiles'
-import * as DownloadFiles from './DownloadFiles'
-import * as ExchangeLink from './ExchangeLink'
-
-import * as LoadingScreen from './../components/LoadingScreen'
-import * as ErrorScreen from '../components/ErrorScreen'
 
 type GotMetadata = { type: 'GotMetadata', encMetadata: string, seedHash: string, salt: string, passwordless: boolean, numFiles: number }
 type FailGetMetadata = { type: 'FailGetMetadata' }
@@ -46,8 +45,8 @@ type InitializedModel =
 
 type Model =
   | { type: 'Loading', linkId: string, seed: Uint8Array }
-  | InitializedModel
   | { type: 'Error' }
+  | InitializedModel
 
 const uploadConstraints = {
   numOfFiles: 10,
@@ -87,11 +86,11 @@ function getMetadata(linkId: string) {
 }
 
 function init(
-  stage: string,
-  linkId?: string,
-  seed?: Uint8Array
+  stage:
+    | { type: '0' }
+    | { type: '2', linkId: string, seed: Uint8Array }
 ): [Model, cmd.Cmd<Msg>] {
-  switch (stage) {
+  switch (stage.type) {
     case '0': {
       const [uploadFilesModel, uploadFilesCmd] = UploadFiles.init(uploadConstraints)
 
@@ -103,18 +102,12 @@ function init(
       ]
     }
     case '2': {
-      if (seed === undefined || linkId === undefined)
-        throw new Error('Wrong state')
-
+      const { linkId, seed } = stage
       return [
         { type: 'Loading', linkId, seed },
-        cmd.batch([
-          getMetadata(linkId)
-        ])
+        getMetadata(linkId!)
       ]
     }
-    default:
-      throw new Error('undexpected link status')
   }
 }
 
@@ -122,7 +115,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'GotMetadata': {
       if (model.type != 'Loading')
-        throw new Error('unexpected state')
+        return [{ type: 'Error' }, cmd.none]
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
         model.linkId,
@@ -136,9 +129,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
 
       return [
         { type: 'Ready', screen: { type: 'DownloadFiles', model: downloadFilesModel } },
-        cmd.batch([
-          cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
-        ])
+        cmd.map<DownloadFiles.Msg, Msg>(msg => ({ type: 'DownloadFilesMsg', msg }))(downloadFilesCmd)
       ]
     }
     case 'FailGetMetadata': {
@@ -149,12 +140,16 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
 
     case 'UploadFilesMsg': {
-      if (model.type != 'Ready' || model.screen.type != 'UploadFiles') throw new Error('wrong state')
+      if (model.type != 'Ready' || model.screen.type != 'UploadFiles')
+        return [{ type: 'Error' }, cmd.none]
 
       if (msg.msg.type === 'UploadFinished') {
-        if (!model.screen.model.linkId || !model.screen.model.seed) throw new Error('wrong state')
+        if (model.screen.model.status.type !== 'Uploading')
+          return [{ type: 'Error' }, cmd.none]
 
-        const link = `${window.location.origin}#${model.screen.model.linkId};${sodium.to_base64(model.screen.model.seed)}`
+        const { linkId, seed } = model.screen.model.status
+
+        const link = `${window.location.origin}#${linkId};${sodium.to_base64(seed)}`
         const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link)
 
         return [
@@ -171,7 +166,8 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       ]
     }
     case 'ExchangeLinkMsg': {
-      if (model.type != 'Ready' || model.screen.type != 'ExchangeLink') throw new Error('wrong state')
+      if (model.type != 'Ready' || model.screen.type != 'ExchangeLink')
+        return [{ type: 'Error' }, cmd.none]
 
       const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.update(msg.msg, model.screen.model)
 
@@ -181,7 +177,8 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       ]
     }
     case 'DownloadFilesMsg': {
-      if (model.type != 'Ready' || model.screen.type != 'DownloadFiles') throw new Error('wrong state')
+      if (model.type != 'Ready' || model.screen.type != 'DownloadFiles')
+        return [{ type: 'Error' }, cmd.none]
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.update(msg.msg, model.screen.model)
 

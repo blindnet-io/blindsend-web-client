@@ -16,7 +16,7 @@ const view = (): Html<any> => _ => {
             secondaryColor="rgba(57, 172, 124, 0.78)"
             style={{ marginBottom: '20px' }}
           />
-          <h2 className="tooltip__title section-title">Encrypting files</h2>
+          <h2 className="tooltip__title section-title">Encrypting and uploading files</h2>
           <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
             <div className="tooltip__content">
               <div className="tooltip__slide">

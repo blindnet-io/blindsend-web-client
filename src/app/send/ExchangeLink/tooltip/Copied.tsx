@@ -18,11 +18,11 @@ const view = (): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Provide the file sender with the link and ask them to upload the file there.</p>
-        <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure chanel (e-mail or else).</p>
+        <p className="tooltip__content-text">Your files will be waiting on the exchange link.</p>
+        <p className="tooltip__content-text">If you didn't set up the password, make sure to share the link using a private channel.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">The <b>end-to-end</b> encryption protects you.</p>
+        <p className="tooltip__content-text">Otherwise, don't share the password on the same channel as the link.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -30,11 +30,9 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Provide the file sender with the link and ask them to upload the file there.</p>
-          <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure chanel (e-mail or else).</p>
-        </div>
-        <div className="tooltip__slide">
-          <p className="tooltip__content-text">The <b>end-to-end</b> encryption protects you.</p>
+          <p className="tooltip__content-text">Your files will be waiting on the exchange link.</p>
+          <p className="tooltip__content-text">If you didn't set up the password, make sure to share the link using a private channel.</p>
+          <p className="tooltip__content-text">Otherwise, don't share the password on the same channel as the link.</p>
         </div>
       </div>
     </div>

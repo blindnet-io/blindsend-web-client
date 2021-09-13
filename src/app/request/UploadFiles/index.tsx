@@ -9,7 +9,7 @@ import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 import filesize from 'filesize'
 
-import { endpoint, uploadChunkSize, encryptionChunkSize } from '../../globals'
+import { endpoint, uploadChunkSize, encryptionChunkSize, fullUploadLimit } from '../../globals'
 
 import * as LeftPanel from '../components/LeftPanel'
 import { fromCodec, uuidv4 } from '../../helpers'
@@ -21,7 +21,7 @@ import * as UploadingdTooltip from './tooltip/Uploading'
 import * as UploadedTooltip from './tooltip/Uploaded'
 import * as FailedUploadTooltip from './tooltip/FailedUpload'
 
-import * as FileRow from './components/File'
+import * as FileRow from '../../components/FileUpload'
 
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
@@ -62,7 +62,8 @@ type FileData = {
   id: string,
   progress: number,
   complete: boolean,
-  tooBig: boolean
+  tooBig: boolean,
+  fullUpload: boolean
 }
 
 type Model = {
@@ -91,7 +92,7 @@ function storeMetadata(
   seedHash: Uint8Array,
   publicKey: Uint8Array,
   encryptedMetadata: Uint8Array,
-  files: { id: string }[],
+  files: { id: string, fullUpload: boolean }[],
   linkId: string
 ): cmd.Cmd<Msg> {
 
@@ -104,7 +105,7 @@ function storeMetadata(
     seed_hash: sodium.to_base64(seedHash),
     public_key: sodium.to_base64(publicKey),
     encrypted_metadata: sodium.to_base64(encryptedMetadata),
-    files: files.map(f => ({ id: f.id, full_upload: false })),
+    files: files.map(f => ({ id: f.id, full_upload: f.fullUpload })),
     link_id: linkId
   }
 
@@ -122,6 +123,53 @@ function storeMetadata(
       )
     )
   )(req)
+}
+
+function fullUpload(
+  link: string,
+  state: sodium.StateAddress,
+  fileData: Blob,
+  fileNum: number
+): cmd.Cmd<Msg> {
+
+  function encrypt(fileData: Uint8Array) {
+    let encryptedChunk: Uint8Array = new Uint8Array(
+      fileData.length + Math.ceil(fileData.length / (encryptionChunkSize - 17)) * 17 + 17
+    )
+
+    let i: number, encryptionChunk: Uint8Array
+    let t = 0
+    for (i = 0; i < fileData.length; i = i + encryptionChunkSize - 17) {
+      encryptionChunk = fileData.slice(i, i + encryptionChunkSize - 17)
+      const encryptedEncChunk = sodium.crypto_secretstream_xchacha20poly1305_push(state, encryptionChunk, null, 0)
+      encryptedChunk.set(encryptedEncChunk, t)
+      t += encryptedEncChunk.length
+    }
+
+    const last = sodium.crypto_secretstream_xchacha20poly1305_push(state, new Uint8Array(), null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL)
+    encryptedChunk.set(last, t)
+
+    return encryptedChunk
+  }
+
+  const res: () => Promise<Msg> = () =>
+    fileData.arrayBuffer()
+      .then(fileData =>
+        fetch(link, {
+          method: 'PUT',
+          body: encrypt(new Uint8Array(fileData))
+        }))
+      .then(resp => {
+        if (resp.status === 200)
+          return ({ type: 'UploadedFile', fileNum })
+        else
+          return ({ type: 'FailUploadingFile' })
+      })
+
+  return pipe(
+    res,
+    perform(msg => msg)
+  )
 }
 
 function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
@@ -305,7 +353,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         const tooBig = file.size > model.constraints.singleSize
         if (tooBig) renderTooBig = 'FileTooBig'
 
-        return { file, id: uuidv4(), progress: 0, complete: false, tooBig }
+        return { file, id: uuidv4(), progress: 0, complete: false, tooBig, fullUpload: file.size <= fullUploadLimit }
       })
       const files = [...model.files, ...newFiles]
 
@@ -361,7 +409,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           encStates,
           renderError: false
         },
-        storeMetadata(seedHash, publicKey, concat(iv, encryptedMetadata), files.map(f => ({ id: f.id })), model.linkId)
+        storeMetadata(seedHash, publicKey, concat(iv, encryptedMetadata), files, model.linkId)
       ]
     }
     case 'FailStoreMetadata': {
@@ -374,7 +422,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       return [
         { ...model, uploadLinks: msg.signedUploadLinks },
-        initStorageResumableUpload(msg.signedUploadLinks[0].link, 0)
+        model.files[0].fullUpload
+          ? fullUpload(msg.signedUploadLinks[0].link, model.encStates[0].state, model.files[0].file, 0)
+          : initStorageResumableUpload(msg.signedUploadLinks[0].link, 0)
       ]
     }
     case 'UploadInitialized': {
@@ -422,6 +472,18 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         return [
           { ...model, files },
           finishUpload(model.linkId)
+        ]
+      }
+
+      if (model.files[nextFileNum].fullUpload) {
+        return [
+          { ...model, files },
+          fullUpload(
+            model.uploadLinks[nextFileNum].link,
+            model.encStates[nextFileNum].state,
+            model.files[nextFileNum].file,
+            nextFileNum
+          )
         ]
       }
 

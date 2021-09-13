@@ -9,11 +9,12 @@ import { perform } from 'elm-ts/lib/Task'
 import * as sodium from 'libsodium-wrappers'
 import filesize from 'filesize'
 
-import { endpoint, uploadChunkSize, encryptionChunkSize } from '../../globals'
-
+import { endpoint, uploadChunkSize, encryptionChunkSize, fullUploadLimit } from '../../globals'
 import { fromCodec, uuidv4 } from '../../helpers'
+
 import * as PasswordField from '../../components/PasswordField'
 import * as LeftPanel from '../components/LeftPanel'
+import * as FileRow from '../../components/FileUpload'
 import * as HowToTooltip from './tooltip/HowTo'
 import * as FileTooBigTooltip from './tooltip/FileTooBig'
 import * as TooManyFilesTooltip from './tooltip/TooManyFiles'
@@ -21,8 +22,7 @@ import * as TotalSizeTooBigTooltip from './tooltip/TotalSizeTooBig'
 import * as UploadingdTooltip from './tooltip/Uploading'
 import * as UploadedTooltip from './tooltip/Uploaded'
 import * as FailedUploadTooltip from './tooltip/FailedUpload'
-
-import * as FileRow from './components/File'
+import * as UnexpectedErrorTooltip from './tooltip/UnexpectedError'
 
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
@@ -30,7 +30,6 @@ type StoredMetadata = { type: 'StoredMetadata', linkId: string, signedUploadLink
 type FailStoreMetadata = { type: 'FailStoreMetadata' }
 type UploadInitialized = { type: 'UploadInitialized', fileNum: number, sessionUri: string }
 type FailUploadingFile = { type: 'FailUploadingFile' }
-
 type UploadFileChunk = { type: 'UploadFileChunk', fileNum: number, sessionUri: string, state: sodium.StateAddress, offset: number, uploaded: number }
 type UploadedFile = { type: 'UploadedFile', fileNum: number }
 type UploadFinished = { type: 'UploadFinished', linkId: string, seed: string }
@@ -65,7 +64,8 @@ type FileData = {
   id: string,
   progress: number,
   complete: boolean,
-  tooBig: boolean
+  tooBig: boolean,
+  fullUpload: boolean
 }
 
 type Model = {
@@ -73,15 +73,16 @@ type Model = {
   leftPanelModel: LeftPanel.Model,
   files: FileData[],
   totalSize: number,
-  uploading: boolean,
-  seed?: Uint8Array,
-  fileKeys?: Uint8Array[],
-  linkId?: string,
   constraints: Constraints,
-  renderError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig' | 'UploadFailed',
+  hasError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig' | 'UploadFailed' | 'Unexpected',
+  fileKeys: Uint8Array[],
   uploadLinks: { id: string, link: string }[],
   encStates: { state: sodium.StateAddress, header: Uint8Array }[]
-  uploadFinished: boolean
+  status:
+  | { type: 'WaitingForUpload' }
+  | { type: 'InitializedUpload', seed: Uint8Array }
+  | { type: 'Uploading', linkId: string, seed: Uint8Array }
+  | { type: 'Finished', linkId: string, seed: Uint8Array }
 }
 
 function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
@@ -94,7 +95,7 @@ function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
 function storeMetadata(
   seedHash: Uint8Array,
   encryptedMetadata: Uint8Array,
-  files: { id: string }[],
+  files: { id: string, fullUpload: boolean }[],
   passwordless: boolean,
   salt: Uint8Array
 ): cmd.Cmd<Msg> {
@@ -108,7 +109,7 @@ function storeMetadata(
   const body = {
     seed_hash: sodium.to_base64(seedHash),
     encrypted_metadata: sodium.to_base64(encryptedMetadata),
-    files: files.map(f => ({ id: f.id, full_upload: false })),
+    files: files.map(f => ({ id: f.id, full_upload: f.fullUpload })),
     passwordless,
     salt: sodium.to_base64(salt)
   }
@@ -127,6 +128,53 @@ function storeMetadata(
       )
     )
   )(req)
+}
+
+function fullUpload(
+  link: string,
+  state: sodium.StateAddress,
+  fileData: Blob,
+  fileNum: number
+): cmd.Cmd<Msg> {
+
+  function encrypt(fileData: Uint8Array) {
+    let encryptedChunk: Uint8Array = new Uint8Array(
+      fileData.length + Math.ceil(fileData.length / (encryptionChunkSize - 17)) * 17 + 17
+    )
+
+    let i: number, encryptionChunk: Uint8Array
+    let t = 0
+    for (i = 0; i < fileData.length; i = i + encryptionChunkSize - 17) {
+      encryptionChunk = fileData.slice(i, i + encryptionChunkSize - 17)
+      const encryptedEncChunk = sodium.crypto_secretstream_xchacha20poly1305_push(state, encryptionChunk, null, 0)
+      encryptedChunk.set(encryptedEncChunk, t)
+      t += encryptedEncChunk.length
+    }
+
+    const last = sodium.crypto_secretstream_xchacha20poly1305_push(state, new Uint8Array(), null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL)
+    encryptedChunk.set(last, t)
+
+    return encryptedChunk
+  }
+
+  const res: () => Promise<Msg> = () =>
+    fileData.arrayBuffer()
+      .then(fileData =>
+        fetch(link, {
+          method: 'PUT',
+          body: encrypt(new Uint8Array(fileData))
+        }))
+      .then(resp => {
+        if (resp.status === 200)
+          return ({ type: 'UploadedFile', fileNum })
+        else
+          return ({ type: 'FailUploadingFile' })
+      })
+
+  return pipe(
+    res,
+    perform(msg => msg)
+  )
 }
 
 function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
@@ -277,14 +325,14 @@ function init(constraints: Constraints): [Model, cmd.Cmd<Msg>] {
     {
       files: [],
       encStates: [],
+      fileKeys: [],
       uploadLinks: [],
       totalSize: 0,
-      uploading: false,
       constraints,
-      renderError: false,
-      uploadFinished: false,
+      hasError: false,
       passFieldModel,
       leftPanelModel,
+      status: { type: 'WaitingForUpload' }
     },
     cmd.batch([
       cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
@@ -296,17 +344,17 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
   switch (msg.type) {
     case 'AddFiles': {
       if (msg.files.length + model.files.filter(f => !f.tooBig).length > model.constraints.numOfFiles) {
-        return [{ ...model, renderError: 'TooManyFiles' }, cmd.none]
+        return [{ ...model, hasError: 'TooManyFiles' }, cmd.none]
       }
       if ((msg.files.length > 1 || model.files.length > 0) && msg.files.reduce((acc, cur) => acc + cur.size, 0) + model.totalSize > model.constraints.totalSize)
-        return [{ ...model, renderError: 'TotalSizeTooBig' }, cmd.none]
+        return [{ ...model, hasError: 'TotalSizeTooBig' }, cmd.none]
 
       let renderTooBig: false | 'FileTooBig' = false
       const newFiles = msg.files.map(file => {
         const tooBig = file.size > model.constraints.singleSize
         if (tooBig) renderTooBig = 'FileTooBig'
 
-        return { file, id: uuidv4(), progress: 0, complete: false, tooBig }
+        return { file, id: uuidv4(), progress: 0, complete: false, tooBig, fullUpload: file.size <= fullUploadLimit }
       })
       const files = [...model.files, ...newFiles]
 
@@ -314,7 +362,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         ...model,
         files,
         totalSize: files.reduce((acc, cur) => acc + (cur.tooBig ? 0 : cur.file.size), 0),
-        renderError: renderTooBig
+        hasError: renderTooBig
       }, cmd.none]
     }
     case 'Upload': {
@@ -369,26 +417,38 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         {
           ...model,
           files,
-          uploading: true,
-          seed: seedLink,
           fileKeys,
           encStates,
-          renderError: false
+          hasError: false,
+          status: { type: 'InitializedUpload', seed: seedLink }
         },
-        storeMetadata(seedHash, concat(iv, encryptedMetadata), files.map(f => ({ id: f.id })), password.length === 0, salt)
+        storeMetadata(
+          seedHash,
+          concat(iv, encryptedMetadata),
+          files,
+          password.length === 0, salt
+        )
       ]
     }
     case 'FailStoreMetadata': {
       return [
-        { ...model, uploading: false, renderError: 'UploadFailed' },
+        { ...model, hasError: 'UploadFailed', status: { type: 'WaitingForUpload' } },
         cmd.none
       ]
     }
     case 'StoredMetadata': {
+      if (model.status.type !== 'InitializedUpload')
+        return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
       return [
-        { ...model, linkId: msg.linkId, uploadLinks: msg.signedUploadLinks },
-        initStorageResumableUpload(msg.signedUploadLinks[0].link, 0)
+        {
+          ...model,
+          uploadLinks: msg.signedUploadLinks,
+          status: { type: 'Uploading', seed: model.status.seed, linkId: msg.linkId }
+        },
+        model.files[0].fullUpload
+          ? fullUpload(msg.signedUploadLinks[0].link, model.encStates[0].state, model.files[0].file, 0)
+          : initStorageResumableUpload(msg.signedUploadLinks[0].link, 0)
       ]
     }
     case 'UploadInitialized': {
@@ -428,6 +488,8 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'UploadedFile': {
+      if (model.status.type !== 'Uploading')
+        return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
       const files = model.files.map((f, i) => i === msg.fileNum ? { ...f, progress: 100 } : f)
       const nextFileNum = msg.fileNum + 1
@@ -435,7 +497,19 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (nextFileNum == model.files.length) {
         return [
           { ...model, files },
-          finishUpload(model.linkId!, sodium.to_base64(model.seed!))
+          finishUpload(model.status.linkId, sodium.to_base64(model.status.seed))
+        ]
+      }
+
+      if (model.files[nextFileNum].fullUpload) {
+        return [
+          { ...model, files },
+          fullUpload(
+            model.uploadLinks[nextFileNum].link,
+            model.encStates[nextFileNum].state,
+            model.files[nextFileNum].file,
+            nextFileNum
+          )
         ]
       }
 
@@ -445,15 +519,27 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'UploadFinished': {
+      if (model.status.type !== 'Uploading')
+        return [{ ...model, hasError: 'Unexpected' }, cmd.none]
+
       return [
-        { ...model, uploadFinished: true, uploading: false },
+        {
+          ...model,
+          status: { ...model.status, type: 'Finished' }
+        },
         cmd.none
       ]
     }
     case 'FailUploadingFile': {
+      console.log('asd')
       const files = model.files.map(f => ({ ...f, progress: 0, complete: false }))
       return [
-        { ...model, files, uploading: false, renderError: 'UploadFailed' },
+        {
+          ...model,
+          files,
+          hasError: 'UploadFailed',
+          status: { type: 'WaitingForUpload' }
+        },
         cmd.none
       ]
     }
@@ -481,7 +567,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           ...model,
           files,
           totalSize: files.reduce((acc, cur) => acc + (cur.tooBig ? 0 : cur.file.size), 0),
-          renderError: false,
+          hasError: false,
         }, cmd.none]
       }
 
@@ -493,21 +579,27 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 const view = (model: Model): Html<Msg> => dispatch => {
 
   const noFiles = model.files.length === 0
+  const uploading = model.status.type === 'InitializedUpload' || model.status.type === 'Uploading'
 
   const renderTooltip = () => {
-    switch (model.renderError) {
+    switch (model.hasError) {
       case false: {
-        if (model.uploadFinished)
-          return UploadedTooltip.view()(dispatch)
-        else if (model.uploading)
-          return UploadingdTooltip.view()(dispatch)
-        else
-          return HowToTooltip.view()(dispatch)
+        switch (model.status.type) {
+          case 'WaitingForUpload': {
+            const singleSize = filesize(model.constraints.singleSize)
+            const totalSize = filesize(model.constraints.totalSize)
+            return HowToTooltip.view(singleSize, totalSize, model.constraints.numOfFiles)(dispatch)
+          }
+          case 'Finished': return UploadedTooltip.view()(dispatch)
+          case 'InitializedUpload': return UploadingdTooltip.view()(dispatch)
+          case 'Uploading': return UploadingdTooltip.view()(dispatch)
+        }
       }
       case 'FileTooBig': return FileTooBigTooltip.view(filesize(model.constraints.singleSize))(dispatch)
       case 'TooManyFiles': return TooManyFilesTooltip.view(model.constraints.numOfFiles)(dispatch)
       case 'TotalSizeTooBig': return TotalSizeTooBigTooltip.view(filesize(model.constraints.totalSize))(dispatch)
       case 'UploadFailed': return FailedUploadTooltip.view()(dispatch)
+      case 'Unexpected': return UnexpectedErrorTooltip.view()(dispatch)
     }
   }
 
@@ -526,17 +618,17 @@ const view = (model: Model): Html<Msg> => dispatch => {
                 className={noFiles ? "main-drop__file-wrap empty" : "main-drop__file-wrap"}
                 onDragOver={e => {
                   e.preventDefault()
-                  if (!model.uploading && model.uploadLinks.length === 0)
+                  if (model.status.type === 'WaitingForUpload')
                     document.querySelector('.main-drop__file-wrap')?.classList.add('drag')
                 }}
                 onDragLeave={e => {
                   e.preventDefault()
-                  if (!model.uploading && model.uploadLinks.length === 0)
+                  if (model.status.type === 'WaitingForUpload')
                     document.querySelector('.main-drop__file-wrap')?.classList.remove('drag')
                 }}
                 onDrop={e => {
                   e.preventDefault()
-                  if (!model.uploading && model.uploadLinks.length === 0) {
+                  if (model.status.type === 'WaitingForUpload') {
                     document.querySelector('.main-drop__file-wrap')?.classList.remove('drag')
                     dispatch({ type: 'AddFiles', files: [...e.dataTransfer.files] })
                   }
@@ -552,33 +644,38 @@ const view = (model: Model): Html<Msg> => dispatch => {
                   }
                   {!noFiles && model.files.map(file =>
                     FileRow.view(
-                      file.id, file.file.name, file.file.size, file.progress, file.complete, file.tooBig, model.uploading || model.uploadLinks.length > 0)
+                      file.id, file.file.name, file.file.size, file.progress, file.complete, file.tooBig, model.status.type !== 'WaitingForUpload')
                       (msg => dispatch({ type: 'FileMsg', msg }))
                   )}
                 </div>
               </div>
 
               <span className="main-drop__browse">
-                or <a className="main-drop__browse-link" href="" style={{ cursor: model.uploading || model.uploadFinished ? 'default' : 'pointer' }}
+                or <a
+                  className="main-drop__browse-link"
+                  href=""
+                  style={{ cursor: model.status.type === 'WaitingForUpload' ? 'pointer' : 'default' }}
                   onClick={e => {
                     e.preventDefault()
-                    if (!model.uploading && model.uploadLinks.length === 0)
+                    if (model.status.type === 'WaitingForUpload')
                       document.getElementById('file-pick')?.click()
-                  }}>BROWSE</a>
+                  }}>BROWSE
+                </a>
               </span>
 
               {PasswordField.view(model.passFieldModel)(msg => dispatch({ type: 'PasswordFieldMsg', msg }))}
 
-              <div className={model.files.length === 0 || model.uploading || model.uploadFinished ? "btn-wrap disabled" : "btn-wrap"}>
+              <div className={model.status.type === 'WaitingForUpload' && !noFiles ? "btn-wrap" : "btn-wrap disabled"}>
                 <input
                   type="submit"
                   className="btn"
-                  style={model.files.length === 0 || model.uploading || model.uploadFinished ? { pointerEvents: 'none' } : {}}
+                  style={model.status.type === 'WaitingForUpload' && !noFiles ? {} : { pointerEvents: 'none' }}
                   value="send"
-                  disabled={model.files.length === 0 || model.uploading || model.uploadFinished}
+                  disabled={model.status.type !== 'WaitingForUpload' || noFiles}
                   onClick={() => dispatch({ type: 'Upload' })}
                 />
-                <span className={model.uploading ? "btn-animation sending" : "btn-animation"}></span>
+                <span className={uploading ? "btn-animation sending" : "btn-animation"}
+                ></span>
               </div>
 
               <input hidden type='file' multiple id='file-pick' onChange={e => dispatch({ type: 'AddFiles', files: [...e.target.files || []] })} />

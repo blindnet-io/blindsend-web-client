@@ -7,7 +7,7 @@ import WeakEmoji from '../../../../images/weak.svg'
 
 SwiperCore.use([Pagination])
 
-const view = (size: string): Html<any> => _ => {
+const view = (): Html<any> => _ => {
 
   const mobile =
     <Swiper
@@ -18,9 +18,7 @@ const view = (size: string): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Come on! Our <b>{size}</b> file limit is not enough for you? </p>
-        <br />
-        <p className="tooltip__content-text">Really?</p>
+        <p className="tooltip__content-text">Please, refresh the page.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -28,9 +26,7 @@ const view = (size: string): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Come on! Our <b>{size}</b> file limit is not enough for you? </p>
-          <br />
-          <p className="tooltip__content-text">Really?</p>
+          <p className="tooltip__content-text">Please, refresh the page.</p>
         </div>
       </div>
     </div>
@@ -42,7 +38,7 @@ const view = (size: string): Html<any> => _ => {
           <div className="tooltip__img">
             <img src={WeakEmoji} alt="" />
           </div>
-          <h2 className="tooltip__title section-title">FILE TOO BIG</h2>
+          <h2 className="tooltip__title section-title">Something went wrong</h2>
           {window.matchMedia('(max-width: 1099px)').matches ? mobile : desktop}
         </div>
       </div>

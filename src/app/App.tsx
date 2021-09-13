@@ -19,7 +19,7 @@ import * as ErrorScreen from './components/ErrorScreen'
 type InitializedLibsodium = { type: 'InitializedLibsodium' }
 type FailBadLink = { type: 'FailBadLink' }
 type FailGetStatus = { type: 'FailGetStatus' }
-type GotStatus = { type: 'GotStatus', workflow: string, stage: string }
+type GotStatus = { type: 'GotStatus', workflow: 'r' | 's', stage: string }
 
 type RequestMsg = { type: 'RequestMsg', msg: Request.Msg }
 type SendMsg = { type: 'SendMsg', msg: Send.Msg }
@@ -45,11 +45,11 @@ type Model =
 function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 
   type Resp = {
-    workflow: string,
+    workflow: 'r' | 's',
     stage: string
   }
   const schema = t.interface({
-    workflow: t.string,
+    workflow: t.union([t.literal('r'), t.literal('s')]),
     stage: t.string
   })
   const req = {
@@ -82,8 +82,6 @@ const init: () => [Model, cmd.Cmd<Msg>] = () =>
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'InitializedLibsodium': {
-      if (model.type === 'Error') throw new Error('Not possible')
-
       const [linkIdWithHash, seed] = window.location.hash.split(';')
       const linkId = linkIdWithHash.substr(1)
 
@@ -102,7 +100,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       //     cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
       //   ])
       // ]
-      const [sendModel, sendCmd] = Send.init('0')
+      const [sendModel, sendCmd] = Send.init({ type: '0' })
 
       return [
         { type: 'Ready', screen: { type: 'Send', model: sendModel } },
@@ -125,7 +123,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'GotStatus': {
       if (model.type != 'Loading')
-        throw new Error('unexpected state')
+        return [{ type: 'Error' }, cmd.none]
 
       switch (msg.workflow) {
         case 'r': {
@@ -139,7 +137,20 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
           ]
         }
         case 's': {
-          const [sendModel, sendCmd] = Send.init(msg.stage, model.linkId, model.seed)
+          let sendModel: Send.Model, sendCmd: cmd.Cmd<Send.Msg>
+
+          if (msg.stage === '0')
+            [sendModel, sendCmd] = Send.init({ type: '0' })
+          else if (msg.stage === '2') {
+            const { linkId, seed } = model
+            if (!linkId || !seed) {
+              return [{ type: 'Error' }, cmd.none]
+            }
+
+            [sendModel, sendCmd] = Send.init({ type: '2', linkId, seed })
+          }
+          else
+            return [{ type: 'Error' }, cmd.none]
 
           return [
             { type: 'Ready', screen: { type: 'Send', model: sendModel } },
@@ -148,15 +159,19 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
             ])
           ]
         }
-        default:
-          throw new Error('undexpected link status')
       }
     }
     case 'RequestMsg': {
-      if (model.type != 'Ready' || model.screen.type != 'Request') throw new Error('wrong state')
+      if (model.type != 'Ready' || model.screen.type != 'Request')
+        return [{ type: 'Error' }, cmd.none]
 
-      if (msg.msg.type === 'GetLinkMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToSend') {
-        const [sendModel, sendCmd] = Send.init('0')
+
+      if ((
+        msg.msg.type === 'GetLinkMsg' || msg.msg.type === 'ExchangeLinkMsg')
+        && msg.msg.msg.type === 'LeftPanelMsg'
+        && msg.msg.msg.msg.type === 'SwitchToSend'
+      ) {
+        const [sendModel, sendCmd] = Send.init({ type: '0' })
 
         return [
           { type: 'Ready', screen: { type: 'Send', model: sendModel } },
@@ -174,7 +189,8 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       ]
     }
     case 'SendMsg': {
-      if (model.type != 'Ready' || model.screen.type != 'Send') throw new Error('wrong state')
+      if (model.type != 'Ready' || model.screen.type != 'Send')
+        return [{ type: 'Error' }, cmd.none]
 
       if (msg.msg.type === 'UploadFilesMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToReceive') {
         const [requestModel, requestCmd] = Request.init('0')

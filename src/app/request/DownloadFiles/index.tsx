@@ -13,7 +13,7 @@ import { endpoint, encryptionChunkSize } from '../../globals'
 
 import * as LeftPanel from '../components/LeftPanel'
 import * as PasswordField from '../../components/PasswordField'
-import * as FileRow from './components/File'
+import * as FileRow from '../../components/FileDownload'
 
 import { fromCodec } from '../../helpers'
 import * as FilesReadyTooltip from './tooltip/FilesReady'
