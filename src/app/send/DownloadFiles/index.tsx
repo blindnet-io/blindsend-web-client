@@ -660,6 +660,11 @@ const view = (model: Model): Html<Msg> => dispatch => {
       return MetadataDecryptedTooltip.view()(dispatch)
   }
 
+  const downloadAllDisabled =
+    !model.files
+    || (model.files.some(f => f.downloading))
+    || model.files.reduce((a, c) => a + c.size, 0) > 1000000000
+
   return (
     <div className="site-page__row row">
 
@@ -689,14 +694,14 @@ const view = (model: Model): Html<Msg> => dispatch => {
                 </div>
 
                 <div className={
-                  !model.files || (model.files.some(f => f.downloading)) || model.files.reduce((a, c) => a + c.size, 0) > 500000000
+                  downloadAllDisabled
                     ? "btn-wrap main-download__btn-wrap main-download-disabled"
                     : "btn-wrap main-download__btn-wrap"
                 }>
                   <button
                     type="submit"
                     className="main-download__submit btn"
-                    disabled={model.files?.some(f => f.downloading)}
+                    disabled={downloadAllDisabled}
                     onClick={() => dispatch({ type: 'DownloadAll' })}
                   >
                     <span>DOWNLOAD ALL</span>
