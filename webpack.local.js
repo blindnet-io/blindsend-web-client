@@ -21,9 +21,6 @@ module.exports = merge(common, {
     path: path.join(__dirname, '/dist')
   },
   devtool: 'cheap-eval-source-map',
-  externals: {
-    'libsodium-wrappers': 'sodium'
-  },
   optimization: {
     minimize: true,
     minimizer: [
@@ -62,7 +59,6 @@ module.exports = merge(common, {
       filename: 'index.html',
       base: '/',
       inlineSource: 'runtime~.+\\.js',
-      sodiumInject: '<script src="js/sodium.js"></script>',
       zipInject: '<script src="js/zip-stream.js"></script>',
       minify: false
     }),
@@ -74,7 +70,6 @@ module.exports = merge(common, {
     new CopyPlugin({
       patterns: [
         { from: './src/images/favicon.png', to: 'images/favicon.png' },
-        { from: './src/libs/sodium.js', to: 'js/sodium.js' },
         { from: './src/libs/zip-stream.js', to: 'js/zip-stream.js' },
         { from: './src/libs/stream-saver_mitm', to: 'mitm' },
       ],

@@ -4,7 +4,6 @@ import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
-import * as sodium from 'libsodium-wrappers'
 
 import { endpoint } from '../globals'
 
@@ -16,7 +15,7 @@ import * as PrivacyPolicy from '../components/legal/PrivacyPolicy'
 import * as LegalMentions from '../components/legal/LegalMentions'
 import * as TermsAndConditions from '../components/legal/TermsAndCondidions'
 
-import { fromCodec } from '../helpers'
+import { b642arr, fromCodec } from '../helpers'
 import * as GetLink from './GetLink'
 import * as ExchangeLink from './ExchangeLink'
 import * as UploadFiles from './UploadFiles'
@@ -26,8 +25,15 @@ import * as LoadingScreen from './../components/LoadingScreen'
 import * as ErrorScreen from '../components/ErrorScreen'
 
 type GotMetadata = {
-  type: 'GotMetadata', metadata: {
-    encMetadata: string, seedHash: string, publicKey: string, salt: string, passwordless: boolean, numFiles: number
+  type: 'GotMetadata',
+  metadata: {
+    encMetadata: string,
+    seedHash: string,
+    publicKey: string,
+    passwordless: boolean,
+    salt: string,
+    wrappedSk: string,
+    numFiles: number
   }
 }
 type FailGetMetadata = { type: 'FailGetMetadata' }
@@ -53,7 +59,7 @@ type InitializedModel =
   | { type: 'Ready', screen: { type: 'DownloadFiles', model: DownloadFiles.Model } }
 
 type Model =
-  | { type: 'Loading', linkId: string, key: Uint8Array }
+  | { type: 'Loading', linkId: string, key: string }
   | InitializedModel
   | { type: 'Error' }
 
@@ -64,14 +70,23 @@ const uploadConstraints = {
 }
 
 function getMetadata(linkId: string) {
-  type Resp = { enc_metadata: string, seed_hash: string, public_key: string, salt: string, passwordless: boolean, num_files: number }
+  type Resp = {
+    enc_metadata: string,
+    seed_hash: string,
+    public_key: string,
+    passwordless: boolean,
+    salt: string,
+    wrapped_sk: string,
+    num_files: number
+  }
 
   const schema = t.interface({
     enc_metadata: t.string,
     seed_hash: t.string,
     public_key: t.string,
-    salt: t.string,
     passwordless: t.boolean,
+    salt: t.string,
+    wrapped_sk: t.string,
     num_files: t.number
   })
 
@@ -84,7 +99,15 @@ function getMetadata(linkId: string) {
         _ => ({ type: 'FailGetMetadata' }),
         resp => ({
           type: 'GotMetadata',
-          metadata: { encMetadata: resp.enc_metadata, seedHash: resp.seed_hash, publicKey: resp.public_key, salt: resp.salt, passwordless: resp.passwordless, numFiles: resp.num_files }
+          metadata: {
+            encMetadata: resp.enc_metadata,
+            seedHash: resp.seed_hash,
+            publicKey: resp.public_key,
+            passwordless: resp.passwordless,
+            salt: resp.salt,
+            wrappedSk: resp.wrapped_sk,
+            numFiles: resp.num_files
+          }
         })
       )
     )
@@ -94,7 +117,7 @@ function getMetadata(linkId: string) {
 function init(
   stage: string,
   linkId?: string,
-  key?: Uint8Array
+  key?: string
 ): [Model, cmd.Cmd<Msg>] {
   switch (stage) {
     case '0': {
@@ -142,11 +165,11 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
         model.linkId,
-        model.key,
-        sodium.from_base64(msg.metadata.encMetadata),
-        sodium.from_base64(msg.metadata.seedHash),
-        sodium.from_base64(msg.metadata.publicKey),
-        sodium.from_base64(msg.metadata.salt),
+        msg.metadata.publicKey,
+        b642arr(msg.metadata.wrappedSk),
+        b642arr(msg.metadata.encMetadata),
+        b642arr(msg.metadata.seedHash),
+        b642arr(msg.metadata.salt),
         msg.metadata.passwordless,
         msg.metadata.numFiles
       )

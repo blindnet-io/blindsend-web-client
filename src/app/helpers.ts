@@ -28,9 +28,33 @@ export function uuidv4() {
   );
 }
 
-export function concat(arr1: Uint8Array, arr2: Uint8Array): Uint8Array {
-  var tmp = new Uint8Array(arr1.byteLength + arr2.byteLength);
-  tmp.set(arr1, 0)
-  tmp.set(arr2, arr1.byteLength)
-  return tmp;
+export function concat(buffer1: ArrayBuffer, buffer2: ArrayBuffer): ArrayBuffer {
+  var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength)
+  tmp.set(new Uint8Array(buffer1), 0)
+  tmp.set(new Uint8Array(buffer2), buffer1.byteLength)
+  return tmp.buffer
+}
+
+export function equal(a: Uint8Array, b: Uint8Array) {
+  if (a.byteLength !== b.byteLength) return false
+
+  for (let i = 0; i < a.byteLength; i++) {
+    if (a[i] !== b[i]) return false
+  }
+
+  return true
+}
+
+export function b642arr(b64str: string): Uint8Array {
+  return Uint8Array.from(atob(b64str), c => c.charCodeAt(0))
+}
+
+export function arr2b64(arr: ArrayBuffer | Uint8Array): string {
+  return btoa(Array.from(new Uint8Array(arr)).map(val => String.fromCharCode(val)).join(''))
+}
+
+export function arr2b64url(byteArray: ArrayBuffer): string {
+  return btoa(Array.from(new Uint8Array(byteArray)).map(val => {
+    return String.fromCharCode(val)
+  }).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
 }

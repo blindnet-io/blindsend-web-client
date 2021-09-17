@@ -2,16 +2,15 @@ import * as React from 'react'
 import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
-import * as task from 'fp-ts/lib/Task'
+import { Task, delay, fromIO } from 'fp-ts/lib/Task'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import { perform } from 'elm-ts/lib/Task'
-import * as sodium from 'libsodium-wrappers'
 import * as keyval from 'idb-keyval'
 
 import { endpoint } from '../../globals'
+import { fromCodec, promiseToCmd, arr2b64 } from '../../helpers'
 
-import { fromCodec, promiseToCmd } from '../../helpers'
 import * as PasswordField from '../../components/PasswordField'
 import * as LeftPanel from '../components/LeftPanel'
 import * as HowToTooltip from './tooltip/HowTo'
@@ -19,9 +18,15 @@ import * as WeakPassTooltip from './tooltip/WeakPassword'
 import * as StrongPassTooltip from './tooltip/StrongPassword'
 import * as ServerErrorTooltip from './tooltip/ServerError'
 
+type Keys = { salt: Uint8Array, wrappedSk: ArrayBuffer, pk: string }
+type KeysPasswordless = { sk: CryptoKey, pk: string }
+
 type PasswordFieldMsg = { type: 'PasswordFieldMsg', msg: PasswordField.Msg }
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
 
+type GeneratedKeysPass = { type: 'GeneratedKeysPass', keys: Keys }
+type GeneratedKeysPasswordless = { type: 'GeneratedKeysPasswordless', keys: KeysPasswordless }
+type FailedGeneratingKeys = { type: 'FailedGeneratingKeys' }
 type GenerateLink = { type: 'GenerateLink' }
 type GenerateLinkPasswordless = { type: 'GenerateLinkPasswordless' }
 type EstimatePass = { type: 'EstimatePass' }
@@ -36,6 +41,9 @@ type IndexedDBNotSupported = { type: 'IndexedDBNotSupported' }
 type Msg =
   | PasswordFieldMsg
   | LeftPanelMsg
+  | GeneratedKeysPass
+  | GeneratedKeysPasswordless
+  | FailedGeneratingKeys
   | GenerateLink
   | GenerateLinkPasswordless
   | EstimatePass
@@ -55,8 +63,8 @@ type Model = {
     n: number
   },
   loading: boolean,
-  publicKey?: Uint8Array,
-  seed?: Uint8Array,
+  keys?: Keys,
+  keysPasswordless?: KeysPasswordless,
   linkId?: string,
   canPasswordless: boolean,
   failed: boolean
@@ -79,12 +87,14 @@ function checkIndexedDb(): cmd.Cmd<Msg> {
   )
 }
 
-function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uint8Array }): cmd.Cmd<Msg> {
+function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uint8Array, wrappedSk: ArrayBuffer }): cmd.Cmd<Msg> {
 
   type Resp = { link_id: string }
 
   const schema = t.interface({ link_id: t.string })
-  const body = input.type === 'Password' ? { salt: sodium.to_base64(input.salt), passwordless: false } : { passwordless: true }
+  const body = input.type === 'Password'
+    ? { salt: arr2b64(input.salt), wrapped_sk: arr2b64(input.wrappedSk), passwordless: false }
+    : { passwordless: true }
 
   const req = {
     ...http.post(`${endpoint}/request/get-link`, body, fromCodec(schema)),
@@ -100,6 +110,39 @@ function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uin
       )
     )
   )(req)
+}
+
+function getKeys(pass: string) {
+  const te = new TextEncoder()
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+
+  const keys: Task<Msg> = () =>
+    crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"])
+      .then(passKey => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, false, ['wrapKey']))
+      .then(aesKey => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ['deriveBits'])
+        .then(ecdhKey => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)
+          .then(pk => crypto.subtle.wrapKey('jwk', ecdhKey.privateKey, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) })
+            .then<Msg>(wrappedSk => ({ type: 'GeneratedKeysPass', keys: { salt, wrappedSk, pk: `${pk.x}.${pk.y}` } }))
+          )))
+      .catch(_ => ({ type: 'FailedGeneratingKeys' }))
+
+  return pipe(
+    keys,
+    perform(msg => msg)
+  )
+}
+
+function getKeysPasswordless() {
+  const keys: Task<Msg> = () =>
+    crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ['deriveBits'])
+      .then(ecdhKey => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)
+        .then<Msg>(pk => ({ type: 'GeneratedKeysPasswordless', keys: { sk: ecdhKey.privateKey, pk: `${pk.x}.${pk.y}` } })))
+      .catch(_ => ({ type: 'FailedGeneratingKeys' }))
+
+  return pipe(
+    keys,
+    perform(msg => msg)
+  )
 }
 
 const init: () => [Model, cmd.Cmd<Msg>] = () => {
@@ -131,7 +174,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (msg.msg.type == 'ChangePassword' && !model.passStrength.estimated) {
 
         const estimate: cmd.Cmd<Msg> = pipe(
-          task.delay(500)(task.fromIO(() => undefined)),
+          delay(500)(fromIO(() => undefined)),
           perform(
             () => ({ type: 'EstimatePass' })
           )
@@ -167,73 +210,73 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         return [{ ...model, passStrength: { estimated: true, n: 0 } }, cmd.none]
     }
     case 'GenerateLink': {
-      // 16 bytes
-      const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES)
-
-      // Argon2id, 32 bytes
-      const seed = sodium.crypto_pwhash(
-        sodium.crypto_kx_SEEDBYTES,
-        model.passFieldModel.value,
-        salt,
-        1,
-        8192,
-        sodium.crypto_pwhash_ALG_DEFAULT
-      )
-
-      // X25519, 2x 32 bytes
-      const { publicKey } = sodium.crypto_kx_seed_keypair(seed)
-
       return [
-        { ...model, loading: true, publicKey, failed: false },
-        getLink({ type: 'Password', salt })
+        { ...model, loading: true, failed: false },
+        getKeys(model.passFieldModel.value)
+      ]
+    }
+    case 'GeneratedKeysPass': {
+      return [
+        { ...model, keys: msg.keys },
+        getLink({ type: 'Password', salt: msg.keys.salt, wrappedSk: msg.keys.wrappedSk })
       ]
     }
     case 'GotLink': {
-      if (model.publicKey) {
-        const encodedKey = sodium.to_base64(model.publicKey)
+      if (model.keys) {
         return [
           { ...model, loading: false },
-          cmd.of<Msg>({ type: 'Finish', linkId: msg.linkId, publicKey: encodedKey, passwordless: false })
+          cmd.of<Msg>({ type: 'Finish', linkId: msg.linkId, publicKey: model.keys.pk, passwordless: false })
         ]
       }
       else
-        throw new Error('public key missing from state')
+        throw new Error('wrong state')
     }
     case 'GenerateLinkPasswordless': {
-      // 32 bytes
-      const seed = sodium.randombytes_buf(sodium.crypto_kx_SEEDBYTES)
-      const { publicKey } = sodium.crypto_kx_seed_keypair(seed)
-
       return [
-        { ...model, loading: true, publicKey, seed, failed: false },
+        { ...model, loading: true, failed: false },
+        getKeysPasswordless()
+      ]
+    }
+    case 'GeneratedKeysPasswordless': {
+      return [
+        { ...model, keysPasswordless: msg.keys },
         getLink({ type: 'Passwordless' })
       ]
     }
     case 'GotLinkPasswordless': {
-      if (model.seed) {
-        const store = keyval.createStore('blindsend', 'seed')
+      if (!model.keysPasswordless)
+        throw new Error('wrong state')
 
-        return [
-          { ...model, linkId: msg.linkId },
-          promiseToCmd(
-            keyval.set(msg.linkId, model.seed, store),
-            _ => ({ type: 'SavedKeyPasswordless' })
-          )
-        ]
-      }
-      else
-        throw new Error('seed missing from state')
+      const store = keyval.createStore('blindsend', 'seed')
+
+      return [
+        { ...model, linkId: msg.linkId },
+        promiseToCmd(
+          keyval.set(msg.linkId, model.keysPasswordless.sk, store),
+          _ => ({ type: 'SavedKeyPasswordless' })
+        )
+      ]
+    }
+    case 'FailedGeneratingKeys': {
+      return [
+        { ...model, failed: true },
+        cmd.none
+      ]
     }
     case 'SavedKeyPasswordless': {
-      if (model.linkId && model.publicKey) {
-        const encodedKey = sodium.to_base64(model.publicKey)
-        return [{ ...model, loading: false }, cmd.of<Msg>({ type: 'Finish', linkId: model.linkId, publicKey: encodedKey, passwordless: true })]
-      }
+      if (model.linkId && model.keysPasswordless)
+        return [
+          { ...model, loading: false },
+          cmd.of<Msg>({ type: 'Finish', linkId: model.linkId, publicKey: model.keysPasswordless.pk, passwordless: true })
+        ]
       else
         throw new Error('state invalid')
     }
     case 'FailGetLink': {
-      return [{ ...model, loading: false, failed: true }, cmd.none]
+      return [
+        { ...model, loading: false, failed: true },
+        cmd.none
+      ]
     }
     case 'Finish': {
       return [model, cmd.none]
@@ -277,14 +320,13 @@ const view = (model: Model): Html<Msg> => dispatch => {
               <h2 className="main-password__title section-title">Set Password</h2>
               <div className="main-password__form">
                 {PasswordField.view(model.passFieldModel)(msg => dispatch({ type: 'PasswordFieldMsg', msg }))}
-                <div className={model.loading ? "btn-wrap disabled" : "btn-wrap"}>
+                <div className={model.loading || model.passFieldModel.value.length === 0 ? "btn-wrap disabled" : "btn-wrap"}>
                   <input
                     type="submit"
                     className="main-password__submit btn"
-                    style={model.loading ? { pointerEvents: 'none' } : {}}
                     value="generate Link"
                     onClick={() => dispatch({ type: 'GenerateLink' })}
-                    disabled={model.loading}
+                    disabled={model.loading || model.passFieldModel.value.length === 0}
                   />
                   <span className={model.loading ? "btn-animation sending" : "btn-animation"}></span>
                 </div>

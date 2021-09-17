@@ -3,11 +3,10 @@ import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
-import * as sodium from 'libsodium-wrappers'
 
 import { endpoint } from './globals'
 
-import { promiseToCmd } from './helpers'
+import { b642arr } from './helpers'
 
 import { fromCodec } from './helpers'
 import * as Request from './request/Request'
@@ -16,7 +15,6 @@ import * as Send from './send/Send'
 import * as LoadingScreen from './components/LoadingScreen'
 import * as ErrorScreen from './components/ErrorScreen'
 
-type InitializedLibsodium = { type: 'InitializedLibsodium' }
 type FailBadLink = { type: 'FailBadLink' }
 type FailGetStatus = { type: 'FailGetStatus' }
 type GotStatus = { type: 'GotStatus', workflow: 'r' | 's', stage: string }
@@ -25,7 +23,6 @@ type RequestMsg = { type: 'RequestMsg', msg: Request.Msg }
 type SendMsg = { type: 'SendMsg', msg: Send.Msg }
 
 type Msg =
-  | InitializedLibsodium
   | FailBadLink
   | FailGetStatus
   | GotStatus
@@ -38,7 +35,7 @@ type InitializedModel =
   | { type: 'Ready', screen: { type: 'Send', model: Send.Model } }
 
 type Model =
-  | { type: 'Loading', linkId?: string, seed?: Uint8Array }
+  | { type: 'Loading', linkId?: string, seed?: string }
   | InitializedModel
   | { type: 'Error' }
 
@@ -73,42 +70,37 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
   )(req)
 }
 
-const init: () => [Model, cmd.Cmd<Msg>] = () =>
-  [
-    { type: 'Loading' },
-    promiseToCmd(sodium.ready, _ => ({ type: 'InitializedLibsodium' })),
+const init: () => [Model, cmd.Cmd<Msg>] = () => {
+  const [linkIdWithHash, seed] = window.location.hash.split(';')
+  const linkId = linkIdWithHash.substr(1)
+
+  if (linkId != null && seed != null) {
+    return [
+      { type: 'Loading', linkId, seed },
+      getLinkStatus(linkId)
+    ]
+  }
+
+  const [requestModel, requestCmd] = Request.init('0')
+
+  return [
+    { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+    cmd.batch([
+      cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+    ])
   ]
+  // const [sendModel, sendCmd] = Send.init({ type: '0' })
+
+  // return [
+  //   { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+  //   cmd.batch([
+  //     cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+  //   ])
+  // ]
+}
 
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
-    case 'InitializedLibsodium': {
-      const [linkIdWithHash, seed] = window.location.hash.split(';')
-      const linkId = linkIdWithHash.substr(1)
-
-      if (linkId != null && seed != null) {
-        return [
-          { type: 'Loading', linkId, seed: sodium.from_base64(seed) },
-          getLinkStatus(linkId)
-        ]
-      }
-
-      // const [requestModel, requestCmd] = Request.init('0')
-
-      // return [
-      //   { type: 'Ready', screen: { type: 'Request', model: requestModel } },
-      //   cmd.batch([
-      //     cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
-      //   ])
-      // ]
-      const [sendModel, sendCmd] = Send.init({ type: '0' })
-
-      return [
-        { type: 'Ready', screen: { type: 'Send', model: sendModel } },
-        cmd.batch([
-          cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
-        ])
-      ]
-    }
     case 'FailBadLink': {
       return [
         { type: 'Error' },
@@ -147,7 +139,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
               return [{ type: 'Error' }, cmd.none]
             }
 
-            [sendModel, sendCmd] = Send.init({ type: '2', linkId, seed })
+            [sendModel, sendCmd] = Send.init({ type: '2', linkId, seed: b642arr(seed) })
           }
           else
             return [{ type: 'Error' }, cmd.none]

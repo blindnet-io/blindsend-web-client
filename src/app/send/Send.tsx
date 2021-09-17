@@ -4,10 +4,9 @@ import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
-import * as sodium from 'libsodium-wrappers'
 
 import { endpoint } from '../globals'
-import { fromCodec } from '../helpers'
+import { fromCodec, b642arr, arr2b64 } from '../helpers'
 
 import * as UploadFiles from './UploadFiles'
 import * as DownloadFiles from './DownloadFiles'
@@ -120,9 +119,9 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
         model.linkId,
         model.seed,
-        sodium.from_base64(msg.encMetadata),
-        sodium.from_base64(msg.seedHash),
-        sodium.from_base64(msg.salt),
+        b642arr(msg.encMetadata),
+        b642arr(msg.seedHash),
+        b642arr(msg.salt),
         msg.passwordless,
         msg.numFiles
       )
@@ -149,7 +148,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
 
         const { linkId, seed } = model.screen.model.status
 
-        const link = `${window.location.origin}#${linkId};${sodium.to_base64(seed)}`
+        const link = `${window.location.origin}#${linkId};${arr2b64(seed)}`
         const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link)
 
         return [

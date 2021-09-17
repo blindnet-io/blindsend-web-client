@@ -19,9 +19,6 @@ module.exports = merge(common, {
     filename: 'js/[name].[contenthash].bundle.js',
     path: path.join(__dirname, '/dist')
   },
-  externals: {
-    'libsodium-wrappers': 'sodium'
-  },
   performance: { hints: false },
   optimization: {
     minimize: true,
@@ -71,13 +68,11 @@ module.exports = merge(common, {
       filename: 'index.html',
       base: '/',
       inlineSource: 'runtime~.+\\.js',
-      sodiumInject: '<script src="js/sodium.js"></script>',
       zipInject: '<script src="js/zip-stream.js"></script>'
     }),
     new CopyPlugin({
       patterns: [
         { from: './src/images/favicon.png', to: 'images/favicon.png' },
-        { from: './src/libs/sodium.js', to: 'js/sodium.js' },
         { from: './src/libs/zip-stream.js', to: 'js/zip-stream.js' },
         { from: './src/libs/stream-saver_mitm', to: 'mitm' },
       ],

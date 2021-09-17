@@ -2,20 +2,19 @@ import * as React from 'react'
 import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
-import * as task from 'fp-ts/lib/Task'
+import { Task, delay, fromIO } from 'fp-ts/lib/Task'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import { perform } from 'elm-ts/lib/Task'
-import * as sodium from 'libsodium-wrappers'
 import * as keyval from 'idb-keyval'
 
-import { endpoint, encryptionChunkSize } from '../../globals'
+import { endpoint, uploadChunkSize } from '../../globals'
 
 import * as LeftPanel from '../components/LeftPanel'
 import * as PasswordField from '../../components/PasswordField'
 import * as FileRow from '../../components/FileDownload'
 
-import { fromCodec } from '../../helpers'
+import { fromCodec, concat, equal, b642arr } from '../../helpers'
 import * as FilesReadyTooltip from './tooltip/FilesReady'
 import * as VerifyingPasswordTooltip from './tooltip/VerifyingPassword'
 import * as MetadataDecryptedTooltip from './tooltip/MetadataDecrypted'
@@ -48,16 +47,17 @@ const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(Transform
 
 type CheckPassword = { type: 'CheckPassword' }
 type PassNotOk = { type: 'PassNotOk' }
+type SeedNotOk = { type: 'SeedNotOk' }
 type PassOk = { type: 'PassOk', seed: Uint8Array }
-type GotSeed = { type: 'GotSeed', seed: Uint8Array }
-type FailedGettingSeed = { type: 'FailedGettingSeed' }
-type DecryptedMetadata = { type: 'DecryptedMetadata', files: { name: string, size: number, id: string, header: Uint8Array }[] }
+type DecryptedMetadata = { type: 'DecryptedMetadata', files: { name: string, size: number, id: string, iv: Uint8Array }[], fileKeys: CryptoKey[] }
+type GotKeyFromIndexedDb = { type: 'GotKeyFromIndexedDb', sk: CryptoKey }
+type FailedGettingKeyFromIndexedDb = { type: 'FailedGettingKeyFromIndexedDb' }
 type FailedDecryptingData = { type: 'FailedDecryptingData' }
 
 type DownloadAll = { type: 'DownloadAll' }
 type GotSignedDownloadLink = { type: 'GotSignedDownloadLink', link: string, fileId: string, nextFile: number }
 type GotFileStream = { type: 'GotFileStream', fileId: string, encFileContent: ReadableStream<Uint8Array>, nextFile: number }
-type FileDecrypted = { type: 'FileDecrypted', fileId: string, fileContent: ReadableStream<Uint8Array>, nextFile: number }
+type FileBeingDecrypted = { type: 'FileBeingDecrypted', fileId: string, fileContent: ReadableStream<Uint8Array>, nextFile: number }
 type FileDownloaded = { type: 'FileDownloaded', fileId: string }
 type ArchiveDownloaded = { type: 'ArchiveDownloaded' }
 type FailedGetFile = { type: 'FailedGetFile', fileId: string }
@@ -70,9 +70,10 @@ type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
 type Msg =
   | CheckPassword
   | PassNotOk
+  | SeedNotOk
   | PassOk
-  | GotSeed
-  | FailedGettingSeed
+  | GotKeyFromIndexedDb
+  | FailedGettingKeyFromIndexedDb
   | DecryptedMetadata
   | FailedDecryptingData
   | DownloadAll
@@ -81,8 +82,9 @@ type Msg =
   | ArchiveDownloaded
   | FailedGetFile
   | FailedDownloadArchive
-  | FileDecrypted
+  | FileBeingDecrypted
   | FileDownloaded
+
   | PasswordFieldMsg
   | LeftPanelMsg
   | FileMsg
@@ -91,25 +93,25 @@ type BlockingAction = false | 'gettingSeed' | 'checkingPass' | 'decryptingMetada
 
 type Model = {
   linkId: string,
-  reqPublicKey: Uint8Array,
+  senderPublicKey: string,
+  wrappedSk: ArrayBuffer,
   encMetadata: Uint8Array,
   seedHash: Uint8Array,
-  publicKey: Uint8Array,
   salt: Uint8Array,
   passwordless: boolean,
   numFiles: number,
   typing: number,
   blockingAction: BlockingAction,
   passwordCorrect: boolean,
-  seedNotFound?: boolean,
+  skNotFound?: boolean,
   decryptionFailed?: boolean,
   seed?: Uint8Array,
-  fileKeys?: Uint8Array[],
+  fileKeys?: CryptoKey[],
   files?: {
     name: string,
     size: number,
     id: string,
-    header: Uint8Array,
+    iv: Uint8Array,
     downloading: boolean,
     progress: number
   }[],
@@ -120,69 +122,89 @@ type Model = {
 }
 
 function checkPassword(
-  pk: Uint8Array,
-  myPk: Uint8Array,
+  senderPk: string,
+  wrappedSk: ArrayBuffer,
   salt: Uint8Array,
   seedHash: Uint8Array,
   pass: string
 ): cmd.Cmd<Msg> {
+  const te = new TextEncoder()
 
-  const seed = sodium.crypto_pwhash(
-    sodium.crypto_kx_SEEDBYTES,
-    pass,
-    salt,
-    1,
-    8192,
-    sodium.crypto_pwhash_ALG_DEFAULT
+  const [x, y] = senderPk.split('.')
+  const pkJwk = { 'crv': 'P-256', 'ext': false, 'key_ops': [], 'kty': 'EC', x, y }
+
+  const check: Task<Msg> = () =>
+    crypto.subtle.importKey("jwk", pkJwk, { name: "ECDH", namedCurve: "P-256" }, false, [])
+      .then(senderPk => crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"])
+        .then(passKey => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, true, ['unwrapKey']))
+        .then(aesKey => crypto.subtle.unwrapKey('jwk', wrappedSk, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) }, { name: "ECDH", namedCurve: "P-256" }, false, ['deriveBits'])
+          .then(sk => crypto.subtle.deriveBits({ name: "ECDH", public: senderPk }, sk, 256)
+            .then(seed => crypto.subtle.digest('SHA-256', seed)
+              .then<Msg>(newSeedHash => {
+                if (equal(new Uint8Array(newSeedHash), seedHash))
+                  return { type: 'PassOk', seed: new Uint8Array(seed) }
+                else return { type: 'PassNotOk' }
+              })
+            ))))
+      .catch<Msg>(_ => ({ type: 'PassNotOk' }))
+
+  return pipe(
+    check,
+    perform(msg => msg)
   )
-
-  return checkSeed(pk, myPk, seedHash, seed)
 }
 
 function checkSeed(
-  pk: Uint8Array,
-  myPk: Uint8Array,
-  seedHash: Uint8Array,
-  passSeed: Uint8Array
+  senderPk: string,
+  sk: CryptoKey,
+  seedHash: Uint8Array
 ): cmd.Cmd<Msg> {
 
-  const { publicKey, privateKey } = sodium.crypto_kx_seed_keypair(passSeed)
+  const [x, y] = senderPk.split('.')
+  const pkJwk = { 'crv': 'P-256', 'ext': true, 'key_ops': [], 'kty': 'EC', x, y }
 
-  if (sodium.compare(myPk, publicKey) !== 0) {
-    return cmd.of({ type: 'PassNotOk' })
-  }
+  const check: Task<Msg> = () =>
+    crypto.subtle.importKey("jwk", pkJwk, { name: "ECDH", namedCurve: "P-256" }, false, [])
+      .then(senderPk => crypto.subtle.deriveBits({ name: "ECDH", public: senderPk }, sk, 256)
+        .then(seed => crypto.subtle.digest('SHA-256', seed)
+          .then<Msg>(newSeedHash => {
+            if (equal(new Uint8Array(newSeedHash), seedHash))
+              return { type: 'PassOk', seed: new Uint8Array(seed) }
+            else return { type: 'SeedNotOk' }
+          })
+        )).catch<Msg>(_ => ({ type: 'SeedNotOk' }))
 
-  const { sharedRx: seed } = sodium.crypto_kx_server_session_keys(publicKey, privateKey, pk)
-  const hash = sodium.crypto_hash(seed)
-
-  if (sodium.compare(seedHash, hash) !== 0) {
-    return cmd.of({ type: 'PassNotOk' })
-  }
-
-  return cmd.of({ type: 'PassOk', seed })
+  return pipe(
+    check,
+    perform(msg => msg)
+  )
 }
 
-function decryptMetadata(metadataKey: Uint8Array, encMetadata: Uint8Array): cmd.Cmd<Msg> {
-  const iv = encMetadata.slice(0, sodium.crypto_secretbox_NONCEBYTES)
-  const meta = encMetadata.slice(sodium.crypto_secretbox_NONCEBYTES)
+function decryptMetadata(seed: Uint8Array, encMetadata: Uint8Array): cmd.Cmd<Msg> {
 
-  try {
-    const decryptedMetadata = sodium.crypto_secretbox_open_easy(
-      meta,
-      iv,
-      metadataKey
-    )
+  const decrypt: Task<Msg> = () =>
+    crypto.subtle.importKey("raw", seed, "HKDF", false, ["deriveBits"])
+      .then(seedKey => crypto.subtle.deriveBits({ "name": "HKDF", "hash": "SHA-256", salt: new Uint8Array(), "info": new TextEncoder().encode('metadata') }, seedKey, 256)
+        .then(metadataKeyBytes => crypto.subtle.importKey('raw', metadataKeyBytes, 'AES-GCM', false, ['decrypt']))
+        .then(metadataKey => crypto.subtle.decrypt({ name: "AES-GCM", iv: encMetadata.slice(0, 12) }, metadataKey, encMetadata.slice(12)))
+        .then(decryptedMetadata => {
+          const metadata: { name: string, size: number, id: string, iv: string }[] =
+            JSON.parse(new TextDecoder().decode(decryptedMetadata))
+          return metadata.map(f => ({ ...f, iv: b642arr(f.iv) }))
+        })
+        .then(files =>
+          Promise.all(
+            files.map(
+              (_, i) =>
+                crypto.subtle.deriveBits({ "name": "HKDF", "hash": "SHA-256", salt: new Uint8Array(), "info": new TextEncoder().encode(`${i}`) }, seedKey, 256)
+                  .then(keyBytes => crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']))))
+            .then<Msg>(fileKeys => ({ type: 'DecryptedMetadata', files, fileKeys }))))
+      .catch<Msg>(_ => ({ type: 'FailedDecryptingData' }))
 
-    const metadata: { name: string, size: number, id: string, header: string }[] =
-      JSON.parse(new TextDecoder().decode(decryptedMetadata))
-
-    const files = metadata.map(f => ({ ...f, header: sodium.from_base64(f.header) }))
-
-    return cmd.of({ type: 'DecryptedMetadata', files })
-
-  } catch {
-    return cmd.of({ type: 'FailedDecryptingData' })
-  }
+  return pipe(
+    decrypt,
+    perform(msg => msg)
+  )
 }
 
 function getSignedDownloadLink(fileId: string, nextFile: number): cmd.Cmd<Msg> {
@@ -213,8 +235,6 @@ function download(fileId: string, link: string, nextFile: number): cmd.Cmd<Msg> 
       .then<Msg>(resp => {
         if (resp.status === 200 && resp.body != null) {
           // @ts-ignore
-          // const mappedBody: ReadableStream<Uint8Array> =
-          //   toPolyfillReadable(resp.body)
           const msg: Msg = ({ type: 'GotFileStream', fileId, encFileContent: resp.body, nextFile })
           return msg
         }
@@ -237,11 +257,39 @@ function download(fileId: string, link: string, nextFile: number): cmd.Cmd<Msg> 
 function decrypt(
   fileId: string,
   fileSize: number,
-  fileKey: Uint8Array,
-  header: Uint8Array,
+  fileKey: CryptoKey,
+  iv: Uint8Array,
   encFileContent: ReadableStream<Uint8Array>,
   nextFile: number
 ): cmd.Cmd<Msg> {
+
+  function decrypTransformer(stream: ReadableStream<Uint8Array>) {
+    const reader = stream.getReader()
+    let i = 0
+
+    const st = new ReadableStream({
+      start(ctrl) {
+        return pump()
+
+        function pump() {
+          // @ts-ignore
+          reader.read().then(res => {
+            const { done, value } = res
+            if (done || value === undefined) { ctrl.close(); return undefined; }
+
+            crypto.subtle.digest('SHA-256', concat(iv, Uint8Array.from([i++])))
+              .then(iv => crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(iv).slice(0, 12) }, fileKey, value))
+              .then(plainText => {
+                ctrl.enqueue(new Uint8Array(plainText))
+                return pump()
+              })
+          })
+        }
+      }
+    })
+
+    return st
+  }
 
   function toFixedChunkSizesTransformer(desiredChunkSize: number): TransformStream<Uint8Array, Uint8Array> {
 
@@ -279,20 +327,8 @@ function decrypt(
       },
       flush: (ctrl: TransformStreamDefaultController<Uint8Array>) => {
         if (leftOverBytes.length > 0) {
-          ctrl.enqueue(leftOverBytes.slice(0, leftOverBytes.length - 17))
-          ctrl.enqueue(leftOverBytes.slice(leftOverBytes.length - 17))
+          ctrl.enqueue(leftOverBytes.slice(0, leftOverBytes.length))
         }
-      }
-    })
-  }
-
-  function decryptTransformer(state: sodium.StateAddress): TransformStream<Uint8Array, Uint8Array> {
-
-    return new TransformStream<Uint8Array, Uint8Array>({
-      transform: (chunk: Uint8Array, ctrl: TransformStreamDefaultController<Uint8Array>) => {
-        const plainText = sodium.crypto_secretstream_xchacha20poly1305_pull(state, chunk, null) // XChaCha20-Poly1305
-        // const plainText = { message: chunk.map((x, _) => x + 1) }
-        ctrl.enqueue(plainText.message)
       }
     })
   }
@@ -312,21 +348,16 @@ function decrypt(
           percentage = percentage + updatePercentage
           const elem = document.getElementById(`progress-${fileId}`)
           if (elem !== null && percentage > last) {
-            // console.log(percentage)
             elem.innerHTML = `${percentage}`
             last = percentage
           }
-          // updateProgressBar(percentage)
         }
 
         ctrl.enqueue(chunk)
       },
-      // flush: _ => clearProgressBar()
       flush: _ => undefined
     })
   }
-
-  const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, fileKey)
 
   // @ts-ignore
   const mappedEncFileContent: ReadableStream<Uint8Array> =
@@ -334,21 +365,19 @@ function decrypt(
 
   // @ts-ignore
   const mappedToFixedChunksTransformer: TransformStream<Uint8Array, Uint8Array> =
-    toPolyfillTransform(toFixedChunkSizesTransformer(encryptionChunkSize))
-  // @ts-ignore
-  const mappedDecryptTransformer: TransformStream<Uint8Array, Uint8Array> =
-    toPolyfillTransform(decryptTransformer(state))
+    toPolyfillTransform(toFixedChunkSizesTransformer(uploadChunkSize))
   // @ts-ignore
   const mappedProgressTransformer: TransformStream<Uint8Array, Uint8Array> =
     toPolyfillTransform(progressTransformer())
 
   const fileContent =
-    mappedEncFileContent
-      .pipeThrough(mappedToFixedChunksTransformer)
-      .pipeThrough(mappedDecryptTransformer)
-      .pipeThrough(mappedProgressTransformer)
+    decrypTransformer(
+      mappedEncFileContent
+        .pipeThrough(mappedProgressTransformer)
+        .pipeThrough(mappedToFixedChunksTransformer)
+    )
 
-  return cmd.of({ type: 'FileDecrypted', fileId, fileContent, nextFile })
+  return cmd.of({ type: 'FileBeingDecrypted', fileId, fileContent, nextFile })
 }
 
 function saveFile(
@@ -361,7 +390,7 @@ function saveFile(
   // @ts-ignore
   const fileStream: WritableStream<Uint8Array> =
     toPolyfillWritable(streamSaver.createWriteStream(fileName, {
-      size: fileSize - Math.floor(fileSize / 4096 + 1 + 1) * 17,
+      size: fileSize,
       writableStrategy: undefined,
       readableStrategy: undefined
     }))
@@ -370,9 +399,7 @@ function saveFile(
     fileContent
       .pipeTo(fileStream)
       .then<Msg>(_ => ({ type: 'FileDownloaded', fileId }))
-      .catch(e => {
-        return ({ type: 'FailedGetFile', fileId })
-      })
+      .catch(_ => ({ type: 'FailedGetFile', fileId }))
 
   return pipe(
     saveResult,
@@ -396,9 +423,7 @@ function zipFiles(files: { id: string, name: string, size: number, content: Read
       // @ts-ignore
       .then<Msg>(_ => ({ type: 'ArchiveDownloaded' }))
       // @ts-ignore
-      .catch(e => {
-        return ({ type: 'FailedDownloadArchive' })
-      })
+      .catch(_ => ({ type: 'FailedDownloadArchive' }))
 
   return pipe(
     result,
@@ -408,10 +433,10 @@ function zipFiles(files: { id: string, name: string, size: number, content: Read
 
 function init(
   linkId: string,
-  reqPublicKey: Uint8Array,
+  senderPublicKey: string,
+  wrappedSk: ArrayBuffer,
   encMetadata: Uint8Array,
   seedHash: Uint8Array,
-  publicKey: Uint8Array,
   salt: Uint8Array,
   passwordless: boolean,
   numFiles: number
@@ -422,10 +447,10 @@ function init(
 
   const model: Model = {
     linkId,
-    reqPublicKey,
+    senderPublicKey,
+    wrappedSk,
     encMetadata,
     seedHash,
-    publicKey,
     salt,
     passwordless,
     numFiles,
@@ -443,12 +468,14 @@ function init(
 
     const getKey: Promise<Msg> =
       keyval
-        .get<Uint8Array>(linkId, keyval.createStore('blindsend', 'seed'))
-        .then(seed => {
-          const msg: Msg = seed ? ({ type: 'GotSeed', seed }) : ({ type: 'FailedGettingSeed' })
+        .get<CryptoKey>(linkId, keyval.createStore('blindsend', 'seed'))
+        .then(sk => {
+          const msg: Msg = sk
+            ? ({ type: 'GotKeyFromIndexedDb', sk })
+            : ({ type: 'FailedGettingKeyFromIndexedDb' })
           return msg
         })
-        .catch(_ => ({ type: 'FailedGettingSeed' }))
+        .catch(_ => ({ type: 'FailedGettingKeyFromIndexedDb' }))
 
     return [
       { ...model, blockingAction: 'gettingSeed' },
@@ -478,7 +505,13 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (model.typing === 1) {
         return [
           { ...model, typing: 0, blockingAction: 'checkingPass' },
-          checkPassword(model.publicKey, model.reqPublicKey, model.salt, model.seedHash, model.passFieldModel.value)
+          checkPassword(
+            model.senderPublicKey,
+            model.wrappedSk,
+            model.salt,
+            model.seedHash,
+            model.passFieldModel.value
+          )
         ]
       }
 
@@ -494,42 +527,34 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         cmd.none
       ]
     }
+    case 'SeedNotOk': {
+      return [
+        { ...model, decryptionFailed: true, blockingAction: false },
+        cmd.none
+      ]
+    }
     case 'PassOk': {
-
-      const metadataKey = sodium.crypto_kdf_derive_from_key(sodium.crypto_secretbox_KEYBYTES, 1, 'metadata', msg.seed)
 
       return [
         { ...model, blockingAction: 'decryptingMetadata', passwordCorrect: true, seed: msg.seed },
-        decryptMetadata(metadataKey, model.encMetadata)
+        decryptMetadata(msg.seed, model.encMetadata)
       ]
     }
-    case 'GotSeed': {
+    case 'GotKeyFromIndexedDb': {
       return [
         { ...model, blockingAction: 'checkingPass' },
-        checkSeed(model.publicKey, model.reqPublicKey, model.seedHash, msg.seed)
+        checkSeed(model.senderPublicKey, msg.sk, model.seedHash)
       ]
     }
-    case 'FailedGettingSeed': {
+    case 'FailedGettingKeyFromIndexedDb': {
       return [
-        { ...model, blockingAction: false, seedNotFound: true },
+        { ...model, blockingAction: false, skNotFound: true },
         cmd.none
       ]
     }
     case 'DecryptedMetadata': {
-      if (!model.seed) throw new Error('Wrong state')
-
-      const { seed } = model
-
-      const fileKeys = msg.files.map((_, i) =>
-        sodium.crypto_kdf_derive_from_key(
-          sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES,
-          i + 2,
-          `${i}${(new Array(8 - i)).fill('-').join('')}`,
-          seed
-        ))
-
       return [
-        { ...model, blockingAction: false, fileKeys, files: msg.files.map(f => ({ ...f, downloading: false, progress: 0 })) },
+        { ...model, blockingAction: false, fileKeys: msg.fileKeys, files: msg.files.map(f => ({ ...f, downloading: false, progress: 0 })) },
         cmd.none
       ]
     }
@@ -543,6 +568,13 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'DownloadAll': {
       if (!model.files) throw new Error('Wrong state')
       const files = model.files.map(f => ({ ...f, downloading: true }))
+
+      if (files.length === 1) {
+        return [
+          { ...model, files, blockingAction: 'downloadingFiles' },
+          getSignedDownloadLink(files[0].id, -1)
+        ]
+      }
 
       return [
         { ...model, files, blockingAction: 'downloadingFiles' },
@@ -564,10 +596,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       return [
         model,
-        decrypt(file.id, file.size, model.fileKeys[i], file.header, msg.encFileContent, msg.nextFile)
+        decrypt(file.id, file.size, model.fileKeys[i], file.iv, msg.encFileContent, msg.nextFile)
       ]
     }
-    case 'FileDecrypted': {
+    case 'FileBeingDecrypted': {
       if (!model.files) throw new Error('Wrong state')
 
       const file = model.files?.find(f => f.id === msg.fileId)
@@ -639,7 +671,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (msg.msg.type == 'ChangePassword' && !model.passwordCorrect) {
 
         const debounceCheckPassword: cmd.Cmd<Msg> = pipe(
-          task.delay(1500)(task.fromIO(() => undefined)),
+          delay(1500)(fromIO(() => undefined)),
           perform(
             () => ({ type: 'CheckPassword' })
           )
@@ -661,7 +693,10 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'LeftPanelMsg': {
       const [leftPanelModel, leftPanelCmd] = LeftPanel.update(msg.msg, model.leftPanelModel)
 
-      return [model, cmd.none]
+      return [
+        { ...model, leftPanelModel },
+        cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd)
+      ]
     }
     case 'FileMsg': {
       if (msg.msg.type === 'Download') {
@@ -687,7 +722,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
       return DecryptingFilesTooltip.view()(dispatch)
     if ((model.blockingAction !== false && ['checkingPass', 'decryptingMetadata', 'gettingSeed'].includes(model.blockingAction)) || model.typing > 0)
       return VerifyingPasswordTooltip.view()(dispatch)
-    else if (model.seedNotFound)
+    else if (model.skNotFound)
       return IndexedDbErrorTooltip.view()(dispatch)
     else if (model.decryptionFailed)
       return DecryptionFailedTooltip.view()(dispatch)

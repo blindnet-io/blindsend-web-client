@@ -1,5 +1,5 @@
 .main-download__files-wrap {
-  max-height: 246px;
+  max-height: 500px;
   margin: 20px 0 32px;
   scrollbar-width: thin;
   scrollbar-color: #90a4ae transparent;
@@ -26,7 +26,7 @@
   }
 
   @include mq($lg) {
-    max-height: 242px;
+    max-height: 500px;
   }
 
   @include mq($sm) {
