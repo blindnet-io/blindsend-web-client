@@ -16,7 +16,7 @@ const view = (): Html<any> => _ => {
     <div className="main-privacy js-main-legal">
       <div className="site-header">
         <div className="site-nav__img">
-          <img src={BlindsendLogo} alt="" />
+          <a href="/" style={{ 'borderBottom': 'none' }}><img src={BlindsendLogo} alt="" /></a>
         </div>
         <span className="site-privacy__close js-legal-close" onClick={() => {
           document.querySelector('.js-main-legal')?.classList.remove('show')

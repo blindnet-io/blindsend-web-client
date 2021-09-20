@@ -272,7 +272,7 @@ function view(model: Model): Html<Msg> {
             <header className="site-header">
               {MainNavigation.view()(dispatch)}
               <div className="site-header__logo">
-                <img src={BlindsendLogo} alt="" />
+                <a href="/" style={{ 'borderBottom': 'none' }}><img src={BlindsendLogo} alt="" /></a>
               </div>
               <ul className="site-header__nav-desktop">
                 {/* <li className="site-header__nav-item"><a href="#">Create account</a></li>

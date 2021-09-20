@@ -20,7 +20,7 @@ function view(): Html<any> {
         <header className="site-header">
           {MainNavigation.view()(dispatch)}
           <div className="site-header__logo">
-            <img src={BlindsendLogo} alt="" />
+            <a href="/" style={{ 'borderBottom': 'none' }}><img src={BlindsendLogo} alt="" /></a>
           </div>
           <ul className="site-header__nav-desktop">
             {/* <li className="site-header__nav-item"><a href="">Create account</a></li>
@@ -40,7 +40,7 @@ function view(): Html<any> {
           <div className="site-nav__wrap col-lg-2">
             <div className="site-nav">
               <div className="site-nav__img">
-                <img src={BlindsendLogo} alt="" />
+                <a href="/" style={{ 'borderBottom': 'none' }}><img src={BlindsendLogo} alt="" /></a>
               </div>
               <ul id="primary-menu" className="primary-menu" style={{ filter: 'blur(4px)' }}>
                 <li className="menu-item">
