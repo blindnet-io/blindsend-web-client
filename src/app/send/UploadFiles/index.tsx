@@ -156,7 +156,14 @@ function fullUpload(
     T.bind('fileData', () => () => fileData.arrayBuffer()),
     T.bind('iv', () => () => crypto.subtle.digest('SHA-256', concat(iv, Uint8Array.from([0])))),
     T.bind('encryptedFileData', ({ iv, fileData }) => () => encrypt(key, fileData, new Uint8Array(iv).slice(0, 12))),
-    T.bind('resp', ({ encryptedFileData }) => () => fetch(link, { method: 'PUT', body: encryptedFileData })),
+    T.bind('resp', ({ encryptedFileData }) => () =>
+      fetch(link, {
+        method: 'PUT',
+        headers: {
+          "x-goog-content-length-range": "0,5000000"
+        },
+        body: encryptedFileData
+      })),
     T.map<any, Msg>(({ resp }) =>
       resp.status === 200
         ? ({ type: 'UploadedFile', fileNum })
@@ -177,7 +184,7 @@ function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg>
       headers: {
         'Content-Length': '0',
         'x-goog-resumable': 'start',
-        "X-Upload-Content-Length": "1"
+        "x-goog-content-length-range": "0,2147483648"
       }
     }).then<Msg>(resp => {
       if (resp.status === 201) {
