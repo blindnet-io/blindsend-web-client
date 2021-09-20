@@ -2,7 +2,8 @@ import * as React from 'react'
 import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
-import { Task } from 'fp-ts/lib/Task'
+import * as T from 'fp-ts/lib/Task'
+import * as TE from 'fp-ts/TaskEither'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import { perform } from 'elm-ts/lib/Task'
@@ -116,27 +117,28 @@ function encryptAndStoreMetadata(
   salt: Uint8Array
 ): cmd.Cmd<Msg> {
 
-  const encryptTask: Task<Msg> = () =>
-    encrypt(metadataKey, new TextEncoder().encode(metadata), iv)
-      .then(encryptedMetadata =>
-        fetch(`${endpoint}/send/init-store-metadata`, {
-          method: 'POST',
-          body: JSON.stringify({
-            seed_hash: arr2b64(seedHash),
-            encrypted_metadata: arr2b64(concat(iv, encryptedMetadata)),
-            files: files.map(f => ({ id: f.id, full_upload: f.fullUpload })),
-            passwordless,
-            salt: arr2b64(salt)
-          })
-        }))
-      .then(resp =>
-        resp.status === 200
-          ? resp.json().then(r => ({ type: 'StoredMetadata', linkId: r.link_id, signedUploadLinks: r.upload_links }))
-          : { type: 'FailStoreMetadata' }
-      )
+  const task: T.Task<Msg> = pipe(
+    T.Do,
+    T.bind('encryptedMetadata', () => () => encrypt(metadataKey, new TextEncoder().encode(metadata), iv)),
+    T.bind('resp', ({ encryptedMetadata }) => () =>
+      fetch(`${endpoint}/send/init-store-metadata`, {
+        method: 'POST',
+        body: JSON.stringify({
+          seed_hash: arr2b64(seedHash),
+          encrypted_metadata: arr2b64(concat(iv, encryptedMetadata)),
+          files: files.map(f => ({ id: f.id, full_upload: f.fullUpload })),
+          passwordless,
+          salt: arr2b64(salt)
+        })
+      })),
+    T.chain(({ resp }) =>
+      resp.status === 200
+        ? () => resp.json().then(r => ({ type: 'StoredMetadata', linkId: r.link_id, signedUploadLinks: r.upload_links }))
+        : T.of({ type: 'FailStoreMetadata' })),
+  )
 
   return pipe(
-    encryptTask,
+    TE.match<any, Msg, Msg>(msg => msg, msg => msg)(TE.tryCatch(task, _ => ({ type: 'FailStoreMetadata' }))),
     perform(msg => msg)
   )
 }
@@ -149,32 +151,33 @@ function fullUpload(
   fileNum: number
 ): cmd.Cmd<Msg> {
 
-  const res: Task<Msg> = () =>
-    fileData
-      .arrayBuffer()
-      .then(fileData => crypto.subtle.digest('SHA-256', concat(iv, Uint8Array.from([0])))
-        .then(iv => encrypt(key, fileData, new Uint8Array(iv).slice(0, 12))))
-      .then(encryptedFileData => fetch(link, { method: 'PUT', body: encryptedFileData }))
-      .then(resp =>
-        resp.status === 200
-          ? ({ type: 'UploadedFile', fileNum })
-          : ({ type: 'FailUploadingFile' })
-      )
+  const task = pipe(
+    T.Do,
+    T.bind('fileData', () => () => fileData.arrayBuffer()),
+    T.bind('iv', () => () => crypto.subtle.digest('SHA-256', concat(iv, Uint8Array.from([0])))),
+    T.bind('encryptedFileData', ({ iv, fileData }) => () => encrypt(key, fileData, new Uint8Array(iv).slice(0, 12))),
+    T.bind('resp', ({ encryptedFileData }) => () => fetch(link, { method: 'PUT', body: encryptedFileData })),
+    T.map<any, Msg>(({ resp }) =>
+      resp.status === 200
+        ? ({ type: 'UploadedFile', fileNum })
+        : ({ type: 'FailUploadingFile' }))
+  )
 
   return pipe(
-    res,
+    TE.match<any, Msg, Msg>(msg => msg, msg => msg)(TE.tryCatch(task, _ => ({ type: 'FailUploadingFile' }))),
     perform(msg => msg)
   )
 }
 
 function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
 
-  const init: Task<Msg> = () =>
+  const init: T.Task<Msg> = () =>
     fetch(link, {
       method: 'POST',
       headers: {
         'Content-Length': '0',
-        'x-goog-resumable': 'start'
+        'x-goog-resumable': 'start',
+        "X-Upload-Content-Length": "1"
       }
     }).then<Msg>(resp => {
       if (resp.status === 201) {
@@ -186,7 +189,7 @@ function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg>
     }).catch(_ => ({ type: 'FailUploadingFile' }))
 
   return pipe(
-    () => init(),
+    init,
     perform(msg => msg)
   )
 }
@@ -223,7 +226,7 @@ function encryptAndUploadFileChunk(
   chunkId: number
 ): cmd.Cmd<Msg> {
 
-  const handleFileChunk: Task<Msg> =
+  const handleFileChunk: T.Task<Msg> =
     (offset + uploadChunkSize >= file.file.size)
       ? () =>
         file.file.slice(offset, file.file.size)
@@ -274,7 +277,7 @@ function encryptAndUploadFileChunk(
           })
 
   return pipe(
-    handleFileChunk,
+    TE.match<any, Msg, Msg>(msg => msg, msg => msg)(TE.tryCatch(handleFileChunk, _ => ({ type: 'FailUploadingFile' }))),
     perform(msg => msg)
   )
 }
@@ -303,39 +306,38 @@ function init(constraints: Constraints): [Model, cmd.Cmd<Msg>] {
 }
 
 function generateKeys(pass: string, numFiles: number): cmd.Cmd<Msg> {
+  const te = new TextEncoder()
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const seedLink = crypto.getRandomValues(new Uint8Array(16))
 
-  const generateKeysA: Task<Keys> = () => {
-    const te = new TextEncoder()
-    const salt = crypto.getRandomValues(new Uint8Array(16))
-    const seedLink = crypto.getRandomValues(new Uint8Array(16))
+  const task = pipe(
+    T.Do,
+    T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveBits"])),
+    T.bind('seedPass', ({ passKey }) => () => crypto.subtle.deriveBits({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, 256)),
+    T.bind('seed', ({ seedPass }) => () => crypto.subtle.digest('SHA-256', concat(seedLink, new Uint8Array(seedPass)))),
+    T.bind('seedKey', ({ seed }) => () => crypto.subtle.importKey("raw", seed, "HKDF", false, ["deriveBits"])),
+    T.bind('metadataKeyBytes', ({ seedKey }) => () => crypto.subtle.deriveBits({ "name": "HKDF", "hash": "SHA-256", salt: new Uint8Array(), "info": te.encode('metadata') }, seedKey, 256)),
+    T.bind('metadataKey', ({ metadataKeyBytes }) => () => crypto.subtle.importKey('raw', metadataKeyBytes, 'AES-GCM', false, ['encrypt'])),
+    T.bind('fileKeys', ({ seedKey }) => () =>
+      Promise.all(
+        new Array(numFiles).fill(null).map(
+          (_, i) =>
+            crypto.subtle.deriveBits({ "name": "HKDF", "hash": "SHA-256", salt: new Uint8Array(), "info": te.encode(`${i}`) }, seedKey, 256)
+              .then(keyBytes => crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']))))),
+    T.bind('sh', ({ seed }) => () => crypto.subtle.digest('SHA-256', seed)),
+    T.map<any, Msg>(({ sh, metadataKey, fileKeys }) => {
+      const seedHash = new Uint8Array(sh)
 
-    return crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveBits"])
-      .then(passKey => crypto.subtle.deriveBits({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, 256))
-      .then(seedPass => crypto.subtle.digest('SHA-256', concat(seedLink, new Uint8Array(seedPass))))
-      .then(seed => crypto.subtle.importKey("raw", seed, "HKDF", false, ["deriveBits"])
-        .then(seedKey => crypto.subtle.deriveBits({ "name": "HKDF", "hash": "SHA-256", salt: new Uint8Array(), "info": te.encode('metadata') }, seedKey, 256)
-          .then(metadataKeyBytes => crypto.subtle.importKey('raw', metadataKeyBytes, 'AES-GCM', false, ['encrypt']))
-          .then(metadataKey =>
-            Promise.all(
-              new Array(numFiles).fill(null).map(
-                (_, i) =>
-                  crypto.subtle.deriveBits({ "name": "HKDF", "hash": "SHA-256", salt: new Uint8Array(), "info": te.encode(`${i}`) }, seedKey, 256)
-                    .then(keyBytes => crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']))))
-              .then(fileKeys => crypto.subtle.digest('SHA-256', seed)
-                .then(sh => {
-                  const seedHash = new Uint8Array(sh)
+      const mIv = crypto.getRandomValues(new Uint8Array(12))
+      const ivs = new Array(numFiles).fill(null).map(_ => crypto.getRandomValues(new Uint8Array(12)))
 
-                  const mIv = crypto.getRandomValues(new Uint8Array(12))
-                  const ivs = new Array(numFiles).fill(null).map(_ => crypto.getRandomValues(new Uint8Array(12)))
-
-                  return { metadataKey, fileKeys, seedLink, seedHash, salt, ivs: { metadata: mIv, files: ivs } }
-                })
-              ))))
-  }
+      return ({ type: 'GeneratedKeys', keys: { metadataKey, fileKeys, seedLink, seedHash, salt, ivs: { metadata: mIv, files: ivs } } })
+    })
+  )
 
   return pipe(
-    generateKeysA,
-    perform(keys => ({ type: 'GeneratedKeys', keys }))
+    TE.match<any, Msg, Msg>(msg => msg, msg => msg)(TE.tryCatch(task, _ => ({ type: 'FailGeneratingKeys' }))),
+    perform(msg => msg)
   )
 }
 
