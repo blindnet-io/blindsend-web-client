@@ -33,8 +33,7 @@ const view = (model: Model, disabled: boolean = false): Html<Msg> => dispatch =>
       id="myInput"
       className="main-input main-password__input"
       value={model.value}
-      disabled={disabled}
-      onChange={e => dispatch({ type: 'ChangePassword', value: e.target.value })}
+      onChange={e => disabled || dispatch({ type: 'ChangePassword', value: e.target.value })}
     />
     <span
       className={model.hidden ? "main-password-btn font-password-show" : "main-password-btn font-password-hide"}

@@ -63,6 +63,7 @@
     "stream-to-promise": "^3.0.0",
     "streamsaver": "^2.0.5",
     "swiper": "^6.7.0",
+    "tai-password-strength": "^1.1.2",
     "web-streams-polyfill": "^3.0.3"
   }
 }

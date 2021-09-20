@@ -14,8 +14,7 @@ import { fromCodec, promiseToCmd, arr2b64 } from '../../helpers'
 import * as PasswordField from '../../components/PasswordField'
 import * as LeftPanel from '../components/LeftPanel'
 import * as HowToTooltip from './tooltip/HowTo'
-import * as WeakPassTooltip from './tooltip/WeakPassword'
-import * as StrongPassTooltip from './tooltip/StrongPassword'
+import * as PasswordStrengthTooltip from './tooltip/PasswordStrength'
 import * as ServerErrorTooltip from './tooltip/ServerError'
 
 type Keys = { salt: Uint8Array, wrappedSk: ArrayBuffer, pk: string }
@@ -171,7 +170,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'PasswordFieldMsg': {
       const [passFieldModel, passFieldCmd] = PasswordField.update(msg.msg, model.passFieldModel)
 
-      if (msg.msg.type == 'ChangePassword' && !model.passStrength.estimated) {
+      if (msg.msg.type == 'ChangePassword') {
 
         const estimate: cmd.Cmd<Msg> = pipe(
           delay(500)(fromIO(() => undefined)),
@@ -181,7 +180,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         )
 
         return [
-          { ...model, passStrength: { estimated: false, n: model.passStrength.n + 1 }, passFieldModel },
+          { ...model, passStrength: { ...model.passStrength, n: model.passStrength.n + 1 }, passFieldModel },
           cmd.batch([
             cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
             estimate
@@ -202,12 +201,15 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'EstimatePass': {
-      if (model.passStrength.estimated)
-        return [model, cmd.none]
-      else if (model.passStrength.n > 1)
-        return [{ ...model, passStrength: { estimated: false, n: model.passStrength.n - 1 } }, cmd.none]
-      else
-        return [{ ...model, passStrength: { estimated: true, n: 0 } }, cmd.none]
+      return [
+        {
+          ...model,
+          passStrength: {
+            estimated: model.passStrength.estimated || model.passStrength.n === 1,
+            n: Math.max(0, model.passStrength.n - 1)
+          }
+        }, cmd.none
+      ]
     }
     case 'GenerateLink': {
       return [
@@ -294,18 +296,15 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 }
 
 const view = (model: Model): Html<Msg> => dispatch => {
-
-  const isStrongPass = model.passFieldModel.value.length > 2
+  const pass = model.passFieldModel.value
 
   const renderTooltip = () => {
-    if (model.failed)
-      return ServerErrorTooltip.view()(dispatch)
-    else if (!model.passStrength.estimated)
+    if (!model.passStrength.estimated || pass.length === 0)
       return HowToTooltip.view()(dispatch)
-    else if (!isStrongPass)
-      return WeakPassTooltip.view()(dispatch)
+    else if (model.failed)
+      return ServerErrorTooltip.view()(dispatch)
     else
-      return StrongPassTooltip.view()(dispatch)
+      return PasswordStrengthTooltip.view(pass)(dispatch)
   }
 
   return (
@@ -320,13 +319,13 @@ const view = (model: Model): Html<Msg> => dispatch => {
               <h2 className="main-password__title section-title">Set Password</h2>
               <div className="main-password__form">
                 {PasswordField.view(model.passFieldModel)(msg => dispatch({ type: 'PasswordFieldMsg', msg }))}
-                <div className={model.loading || model.passFieldModel.value.length === 0 ? "btn-wrap disabled" : "btn-wrap"}>
+                <div className={model.loading || pass.length === 0 ? "btn-wrap disabled" : "btn-wrap"}>
                   <input
                     type="submit"
                     className="main-password__submit btn"
                     value="generate Link"
                     onClick={() => dispatch({ type: 'GenerateLink' })}
-                    disabled={model.loading || model.passFieldModel.value.length === 0}
+                    disabled={model.loading || pass.length === 0}
                   />
                   <span className={model.loading ? "btn-animation sending" : "btn-animation"}></span>
                 </div>
