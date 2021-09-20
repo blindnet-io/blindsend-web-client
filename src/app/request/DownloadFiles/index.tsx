@@ -57,6 +57,7 @@ type FailedDecryptingData = { type: 'FailedDecryptingData' }
 type DownloadAll = { type: 'DownloadAll' }
 type GotSignedDownloadLink = { type: 'GotSignedDownloadLink', link: string, fileId: string, nextFile: number }
 type GotFileStream = { type: 'GotFileStream', fileId: string, encFileContent: ReadableStream<Uint8Array>, nextFile: number }
+type GotAllSignedDownloadLinks = { type: 'GotAllSignedDownloadLinks', links: { fileId: string, link: string }[] }
 type FileBeingDecrypted = { type: 'FileBeingDecrypted', fileId: string, fileContent: ReadableStream<Uint8Array>, nextFile: number }
 type FileDownloaded = { type: 'FileDownloaded', fileId: string }
 type ArchiveDownloaded = { type: 'ArchiveDownloaded' }
@@ -78,6 +79,7 @@ type Msg =
   | FailedDecryptingData
   | DownloadAll
   | GotSignedDownloadLink
+  | GotAllSignedDownloadLinks
   | GotFileStream
   | ArchiveDownloaded
   | FailedGetFile
@@ -113,7 +115,8 @@ type Model = {
     id: string,
     iv: Uint8Array,
     downloading: boolean,
-    progress: number
+    progress: number,
+    link?: string
   }[],
   fileStreams: ReadableStream<Uint8Array>[]
 
@@ -223,6 +226,33 @@ function getSignedDownloadLink(fileId: string, nextFile: number): cmd.Cmd<Msg> {
           ? { type: 'FailedGetFile', fileId }
           : { type: 'FailedDownloadArchive' },
         resp => ({ type: 'GotSignedDownloadLink', link: resp.link, fileId, nextFile })
+      )
+    )
+  )(req)
+}
+
+function getAllSignedDownloadLinks(fileIds: string[]): cmd.Cmd<Msg> {
+
+  type Resp = { links: { file_id: string, link: string }[] }
+
+  const schema = t.interface({
+    links: t.array(t.interface({
+      file_id: t.string,
+      link: t.string
+    }))
+  })
+
+  const req = {
+    ...http.post(`${endpoint}/get-all-signed-download-links`, { file_ids: fileIds }, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  return http.send<Resp, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, Resp, Msg>(
+        _ => ({ type: 'FailedDownloadArchive' }),
+        resp => ({ type: 'GotAllSignedDownloadLinks', links: resp.links.map(l => ({ ...l, fileId: l.file_id })) })
       )
     )
   )(req)
@@ -578,13 +608,23 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       return [
         { ...model, files, blockingAction: 'downloadingFiles' },
-        getSignedDownloadLink(model.files[0].id, 1)
+        getAllSignedDownloadLinks(model.files.map(f => f.id))
       ]
     }
     case 'GotSignedDownloadLink': {
       return [
         { ...model },
         download(msg.fileId, msg.link, msg.nextFile)
+      ]
+    }
+    case 'GotAllSignedDownloadLinks': {
+      if (!model.files) throw new Error('Wrong state')
+
+      const files = model.files.map(f => ({ ...f, link: msg.links.find(l => l.fileId === f.id)!.link }))
+
+      return [
+        { ...model, files },
+        download(files[0].id, files[0].link, 1)
       ]
     }
     case 'GotFileStream': {
@@ -602,14 +642,13 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'FileBeingDecrypted': {
       if (!model.files) throw new Error('Wrong state')
 
-      const file = model.files?.find(f => f.id === msg.fileId)
-      if (!file) throw new Error('Wrong state')
+      const file = model.files.find(f => f.id === msg.fileId)!
 
       if (msg.nextFile > -1 && msg.nextFile < model.files.length) {
 
         return [
           { ...model, fileStreams: [...model.fileStreams, msg.fileContent] },
-          getSignedDownloadLink(model.files[msg.nextFile].id, msg.nextFile + 1)
+          download(model.files[msg.nextFile].id, model.files[msg.nextFile].link!, msg.nextFile + 1)
         ]
       }
 
@@ -700,8 +739,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'FileMsg': {
       if (msg.msg.type === 'Download') {
-        if (!model.files)
-          throw new Error('Files missing')
+        if (!model.files) throw new Error('Files missing')
 
         const files = model.files.map(f => f.id === msg.msg.id ? { ...f, downloading: true } : f)
 
