@@ -58,3 +58,12 @@ export function arr2b64url(byteArray: ArrayBuffer): string {
     return String.fromCharCode(val)
   }).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
 }
+
+export function b64url2arr(b64str: string): Uint8Array {
+  const unescaped =
+    (b64str + '==='.slice((b64str.length + 3) % 4))
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+
+  return Uint8Array.from(atob(unescaped), c => c.charCodeAt(0))
+}

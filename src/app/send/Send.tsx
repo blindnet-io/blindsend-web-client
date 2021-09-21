@@ -87,7 +87,7 @@ function getMetadata(linkId: string) {
 function init(
   stage:
     | { type: '0' }
-    | { type: '2', linkId: string, seed: Uint8Array }
+    | { type: '1', linkId: string, seed: Uint8Array }
 ): [Model, cmd.Cmd<Msg>] {
   switch (stage.type) {
     case '0': {
@@ -100,7 +100,7 @@ function init(
         ])
       ]
     }
-    case '2': {
+    case '1': {
       const { linkId, seed } = stage
       return [
         { type: 'Loading', linkId, seed },

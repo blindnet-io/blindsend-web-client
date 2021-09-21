@@ -17,7 +17,7 @@ import * as ErrorScreen from './components/ErrorScreen'
 
 type FailBadLink = { type: 'FailBadLink' }
 type FailGetStatus = { type: 'FailGetStatus' }
-type GotStatus = { type: 'GotStatus', workflow: 'r' | 's', stage: string }
+type GotStatus = { type: 'GotStatus', status: { workflow: 'ReqFile', stage: string, pk: string } | { workflow: 'SendFile' } }
 
 type RequestMsg = { type: 'RequestMsg', msg: Request.Msg }
 type SendMsg = { type: 'SendMsg', msg: Send.Msg }
@@ -42,13 +42,24 @@ type Model =
 function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 
   type Resp = {
-    workflow: 'r' | 's',
-    stage: string
+    workflow: 'r',
+    stage: string,
+    key: string
+  } | {
+    workflow: 's'
   }
-  const schema = t.interface({
-    workflow: t.union([t.literal('r'), t.literal('s')]),
-    stage: t.string
-  })
+  const schema =
+    t.union([
+      t.interface({
+        workflow: t.literal('r'),
+        stage: t.string,
+        key: t.string
+      }),
+      t.interface({
+        workflow: t.literal('s'),
+      })
+    ])
+
   const req = {
     ...http.get(`${endpoint}/link-status/${linkId}`, fromCodec(schema)),
     headers: { 'Content-Type': 'application/json' }
@@ -64,8 +75,12 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
           else
             return ({ type: 'FailGetStatus' })
         },
-        resp => ({ type: 'GotStatus', workflow: resp.workflow, stage: resp.stage })
-      )
+        resp => {
+          if (resp.workflow === 'r')
+            return ({ type: 'GotStatus', status: { workflow: 'ReqFile', stage: resp.stage, pk: resp.key } })
+          else
+            return ({ type: 'GotStatus', status: { workflow: 'SendFile' } })
+        })
     )
   )(req)
 }
@@ -117,9 +132,9 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       if (model.type != 'Loading')
         return [{ type: 'Error' }, cmd.none]
 
-      switch (msg.workflow) {
-        case 'r': {
-          const [requestModel, requestCmd] = Request.init(msg.stage, model.linkId, model.seed)
+      switch (msg.status.workflow) {
+        case 'ReqFile': {
+          const [requestModel, requestCmd] = Request.init(msg.status.stage, model.linkId, msg.status.pk, model.seed)
 
           return [
             { type: 'Ready', screen: { type: 'Request', model: requestModel } },
@@ -128,21 +143,13 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
             ])
           ]
         }
-        case 's': {
-          let sendModel: Send.Model, sendCmd: cmd.Cmd<Send.Msg>
-
-          if (msg.stage === '0')
-            [sendModel, sendCmd] = Send.init({ type: '0' })
-          else if (msg.stage === '2') {
-            const { linkId, seed } = model
-            if (!linkId || !seed) {
-              return [{ type: 'Error' }, cmd.none]
-            }
-
-            [sendModel, sendCmd] = Send.init({ type: '2', linkId, seed: b642arr(seed) })
-          }
-          else
+        case 'SendFile': {
+          const { linkId, seed } = model
+          if (!linkId || !seed) {
             return [{ type: 'Error' }, cmd.none]
+          }
+
+          const [sendModel, sendCmd] = Send.init({ type: '1', linkId, seed: b642arr(seed) })
 
           return [
             { type: 'Ready', screen: { type: 'Send', model: sendModel } },

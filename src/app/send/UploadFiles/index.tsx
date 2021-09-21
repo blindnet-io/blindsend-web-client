@@ -160,7 +160,7 @@ function fullUpload(
       fetch(link, {
         method: 'PUT',
         headers: {
-          "x-goog-content-length-range": "0,5000000"
+          'x-goog-content-length-range': '0,5000000'
         },
         body: encryptedFileData
       })),
@@ -184,7 +184,7 @@ function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg>
       headers: {
         'Content-Length': '0',
         'x-goog-resumable': 'start',
-        "x-goog-content-length-range": "0,2147483648"
+        'x-goog-content-length-range': '0,2147483648'
       }
     }).then<Msg>(resp => {
       if (resp.status === 201) {

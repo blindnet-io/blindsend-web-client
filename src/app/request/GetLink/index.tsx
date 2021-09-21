@@ -2,7 +2,8 @@ import * as React from 'react'
 import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
-import { Task, delay, fromIO } from 'fp-ts/lib/Task'
+import * as T from 'fp-ts/lib/Task'
+import * as TE from 'fp-ts/TaskEither'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 import { perform } from 'elm-ts/lib/Task'
@@ -17,8 +18,8 @@ import * as HowToTooltip from './tooltip/HowTo'
 import * as PasswordStrengthTooltip from './tooltip/PasswordStrength'
 import * as ServerErrorTooltip from './tooltip/ServerError'
 
-type Keys = { salt: Uint8Array, wrappedSk: ArrayBuffer, pk: string }
-type KeysPasswordless = { sk: CryptoKey, pk: string }
+type Keys = { salt: Uint8Array, wrappedSk: ArrayBuffer, pk: string, pkHash: ArrayBuffer }
+type KeysPasswordless = { sk: CryptoKey, pk: string, pkHash: ArrayBuffer }
 
 type PasswordFieldMsg = { type: 'PasswordFieldMsg', msg: PasswordField.Msg }
 type LeftPanelMsg = { type: 'LeftPanelMsg', msg: LeftPanel.Msg }
@@ -33,7 +34,7 @@ type FailGetLink = { type: 'FailGetLink' }
 type GotLink = { type: 'GotLink', linkId: string }
 type GotLinkPasswordless = { type: 'GotLinkPasswordless', linkId: string }
 type SavedKeyPasswordless = { type: 'SavedKeyPasswordless' }
-type Finish = { type: 'Finish', linkId: string, publicKey: string, passwordless: boolean }
+type Finish = { type: 'Finish', linkId: string, publicKeyHash: ArrayBuffer, passwordless: boolean }
 type CanPasswordless = { type: 'CanPasswordless' }
 type IndexedDBNotSupported = { type: 'IndexedDBNotSupported' }
 
@@ -86,14 +87,19 @@ function checkIndexedDb(): cmd.Cmd<Msg> {
   )
 }
 
-function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uint8Array, wrappedSk: ArrayBuffer }): cmd.Cmd<Msg> {
+function getLink(
+  pk: string,
+  input:
+    | { type: 'Passwordless' }
+    | { type: 'Password', salt: Uint8Array, wrappedSk: ArrayBuffer }
+): cmd.Cmd<Msg> {
 
   type Resp = { link_id: string }
 
   const schema = t.interface({ link_id: t.string })
   const body = input.type === 'Password'
-    ? { salt: arr2b64(input.salt), wrapped_sk: arr2b64(input.wrappedSk), passwordless: false }
-    : { passwordless: true }
+    ? { salt: arr2b64(input.salt), wrapped_sk: arr2b64(input.wrappedSk), pk, passwordless: false }
+    : { passwordless: true, pk }
 
   const req = {
     ...http.post(`${endpoint}/request/get-link`, body, fromCodec(schema)),
@@ -111,35 +117,40 @@ function getLink(input: { type: 'Passwordless' } | { type: 'Password', salt: Uin
   )(req)
 }
 
-function getKeys(pass: string) {
+function getKeys(pass: string): cmd.Cmd<Msg> {
   const te = new TextEncoder()
   const salt = crypto.getRandomValues(new Uint8Array(16))
 
-  const keys: Task<Msg> = () =>
-    crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"])
-      .then(passKey => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, false, ['wrapKey']))
-      .then(aesKey => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ['deriveBits'])
-        .then(ecdhKey => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)
-          .then(pk => crypto.subtle.wrapKey('jwk', ecdhKey.privateKey, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) })
-            .then<Msg>(wrappedSk => ({ type: 'GeneratedKeysPass', keys: { salt, wrappedSk, pk: `${pk.x}.${pk.y}` } }))
-          )))
-      .catch(_ => ({ type: 'FailedGeneratingKeys' }))
+  const task: T.Task<Msg> = pipe(
+    T.Do,
+    T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"])),
+    T.bind('aesKey', ({ passKey }) => () => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, false, ['wrapKey'])),
+    T.bind('ecdhKey', () => () => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ['deriveBits'])),
+    T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)),
+    T.bind('wrappedSk', ({ aesKey, ecdhKey }) => () => crypto.subtle.wrapKey('jwk', ecdhKey.privateKey, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) })),
+    T.bind('pkHash', ({ pk }) => () => crypto.subtle.digest('SHA-256', te.encode(`${pk.x}.${pk.y}`))),
+    T.map(({ wrappedSk, pk, pkHash }) => ({ type: 'GeneratedKeysPass', keys: { salt, wrappedSk, pk: `${pk.x}.${pk.y}`, pkHash } }))
+  )
 
   return pipe(
-    keys,
+    TE.match<any, Msg, Msg>(msg => msg, msg => msg)(TE.tryCatch(task, _ => ({ type: 'FailedGeneratingKeys' }))),
     perform(msg => msg)
   )
 }
 
 function getKeysPasswordless() {
-  const keys: Task<Msg> = () =>
-    crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ['deriveBits'])
-      .then(ecdhKey => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)
-        .then<Msg>(pk => ({ type: 'GeneratedKeysPasswordless', keys: { sk: ecdhKey.privateKey, pk: `${pk.x}.${pk.y}` } })))
-      .catch(_ => ({ type: 'FailedGeneratingKeys' }))
+  const te = new TextEncoder()
+
+  const task: T.Task<Msg> = pipe(
+    T.Do,
+    T.bind('ecdhKey', () => () => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ['deriveBits'])),
+    T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)),
+    T.bind('pkHash', ({ pk }) => () => crypto.subtle.digest('SHA-256', te.encode(`${pk.x}.${pk.y}`))),
+    T.map(({ ecdhKey, pk, pkHash }) => ({ type: 'GeneratedKeysPasswordless', keys: { sk: ecdhKey.privateKey, pk: `${pk.x}.${pk.y}`, pkHash } }))
+  )
 
   return pipe(
-    keys,
+    TE.match<any, Msg, Msg>(msg => msg, msg => msg)(TE.tryCatch(task, _ => ({ type: 'FailedGeneratingKeys' }))),
     perform(msg => msg)
   )
 }
@@ -173,7 +184,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (msg.msg.type == 'ChangePassword') {
 
         const estimate: cmd.Cmd<Msg> = pipe(
-          delay(500)(fromIO(() => undefined)),
+          T.delay(500)(T.fromIO(() => undefined)),
           perform(
             () => ({ type: 'EstimatePass' })
           )
@@ -220,14 +231,14 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'GeneratedKeysPass': {
       return [
         { ...model, keys: msg.keys },
-        getLink({ type: 'Password', salt: msg.keys.salt, wrappedSk: msg.keys.wrappedSk })
+        getLink(msg.keys.pk, { type: 'Password', salt: msg.keys.salt, wrappedSk: msg.keys.wrappedSk })
       ]
     }
     case 'GotLink': {
       if (model.keys) {
         return [
           { ...model, loading: false },
-          cmd.of<Msg>({ type: 'Finish', linkId: msg.linkId, publicKey: model.keys.pk, passwordless: false })
+          cmd.of<Msg>({ type: 'Finish', linkId: msg.linkId, publicKeyHash: model.keys.pkHash, passwordless: false })
         ]
       }
       else
@@ -242,7 +253,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'GeneratedKeysPasswordless': {
       return [
         { ...model, keysPasswordless: msg.keys },
-        getLink({ type: 'Passwordless' })
+        getLink(msg.keys.pk, { type: 'Passwordless' })
       ]
     }
     case 'GotLinkPasswordless': {
@@ -269,7 +280,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       if (model.linkId && model.keysPasswordless)
         return [
           { ...model, loading: false },
-          cmd.of<Msg>({ type: 'Finish', linkId: model.linkId, publicKey: model.keysPasswordless.pk, passwordless: true })
+          cmd.of<Msg>({ type: 'Finish', linkId: model.linkId, publicKeyHash: model.keysPasswordless.pkHash, passwordless: true })
         ]
       else
         throw new Error('state invalid')

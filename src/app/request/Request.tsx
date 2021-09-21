@@ -2,6 +2,7 @@ import * as React from 'react'
 import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
 import * as E from 'fp-ts/lib/Either'
+import * as T from 'fp-ts/lib/Task'
 import { cmd, http } from 'elm-ts'
 import { Html } from 'elm-ts/lib/React'
 
@@ -15,7 +16,7 @@ import * as PrivacyPolicy from '../components/legal/PrivacyPolicy'
 import * as LegalMentions from '../components/legal/LegalMentions'
 import * as TermsAndConditions from '../components/legal/TermsAndCondidions'
 
-import { b642arr, fromCodec } from '../helpers'
+import { arr2b64url, b642arr, b64url2arr, fromCodec, equal } from '../helpers'
 import * as GetLink from './GetLink'
 import * as ExchangeLink from './ExchangeLink'
 import * as UploadFiles from './UploadFiles'
@@ -23,6 +24,7 @@ import * as DownloadFiles from './DownloadFiles'
 
 import * as LoadingScreen from './../components/LoadingScreen'
 import * as ErrorScreen from '../components/ErrorScreen'
+import { perform } from 'elm-ts/lib/Task'
 
 type GotMetadata = {
   type: 'GotMetadata',
@@ -37,6 +39,8 @@ type GotMetadata = {
   }
 }
 type FailGetMetadata = { type: 'FailGetMetadata' }
+type PkOk = { type: 'PkOk', pk: string }
+type PkNotOk = { type: 'PkNotOk' }
 
 type GetLinkMsg = { type: 'GetLinkMsg', msg: GetLink.Msg }
 type ExchangeLinkMsg = { type: 'ExchangeLinkMsg', msg: ExchangeLink.Msg }
@@ -46,6 +50,8 @@ type DownloadFilesMsg = { type: 'DownloadFilesMsg', msg: DownloadFiles.Msg }
 type Msg =
   | GotMetadata
   | FailGetMetadata
+  | PkOk
+  | PkNotOk
 
   | GetLinkMsg
   | ExchangeLinkMsg
@@ -67,6 +73,22 @@ const uploadConstraints = {
   numOfFiles: 10,
   totalSize: 4294967296,
   singleSize: 2147483648
+}
+
+function checkPk(pk: string, pkHash: ArrayBuffer): cmd.Cmd<Msg> {
+
+  const task: T.Task<Msg> = () =>
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(pk))
+      .then(newPkHash => equal(new Uint8Array(newPkHash), new Uint8Array(pkHash)))
+      .then<Msg>(eq => eq
+        ? ({ type: 'PkOk', pk })
+        : ({ type: 'PkNotOk' })
+      ).catch(_ => ({ type: 'FailGetMetadata' }))
+
+  return pipe(
+    task,
+    perform(msg => msg)
+  )
 }
 
 function getMetadata(linkId: string) {
@@ -117,8 +139,10 @@ function getMetadata(linkId: string) {
 function init(
   stage: string,
   linkId?: string,
-  key?: string
+  key?: string,
+  keyHash?: string
 ): [Model, cmd.Cmd<Msg>] {
+
   switch (stage) {
     case '0': {
       const [getLinkModel, getLinkCmd] = GetLink.init()
@@ -131,16 +155,12 @@ function init(
       ]
     }
     case '1': {
-      if (key === undefined || linkId === undefined)
+      if (key === undefined || linkId === undefined || keyHash === undefined)
         throw new Error('Wrong state')
 
-      const [uploadFilesModel, uploadFilesCmd] = UploadFiles.init(linkId, key, uploadConstraints)
-
       return [
-        { type: 'Ready', screen: { type: 'UploadFiles', model: uploadFilesModel } },
-        cmd.batch([
-          cmd.map<UploadFiles.Msg, Msg>(msg => ({ type: 'UploadFilesMsg', msg }))(uploadFilesCmd)
-        ])
+        { type: 'Loading', linkId, key: keyHash },
+        checkPk(key, b64url2arr(keyHash))
       ]
     }
     case '2': {
@@ -159,9 +179,27 @@ function init(
 
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
+    case 'PkOk': {
+      if (model.type != 'Loading') throw new Error('unexpected state')
+
+      const [uploadFilesModel, uploadFilesCmd] = UploadFiles.init(model.linkId, msg.pk, uploadConstraints)
+
+      return [
+        { type: 'Ready', screen: { type: 'UploadFiles', model: uploadFilesModel } },
+        cmd.batch([
+          cmd.map<UploadFiles.Msg, Msg>(msg => ({ type: 'UploadFilesMsg', msg }))(uploadFilesCmd)
+        ])
+      ]
+    }
+    case 'PkNotOk': {
+      return [
+        { type: 'Error' },
+        cmd.none
+      ]
+    }
     case 'GotMetadata': {
-      if (model.type != 'Loading')
-        throw new Error('unexpected state')
+      console.log(msg)
+      if (model.type != 'Loading') throw new Error('unexpected state')
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
         model.linkId,
@@ -192,7 +230,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       if (model.type != 'Ready' || model.screen.type != 'GetLink') throw new Error('wrong state')
 
       if (msg.msg.type === 'Finish') {
-        const link = `${window.location.origin}#${msg.msg.linkId};${msg.msg.publicKey}`
+        const link = `${window.location.origin}#${msg.msg.linkId};${arr2b64url(msg.msg.publicKeyHash)}`
         const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.init(link, msg.msg.passwordless)
 
         return [
