@@ -138,7 +138,7 @@ function checkPassword(
 
   const check: Task<Msg> = () =>
     crypto.subtle.importKey("jwk", pkJwk, { name: "ECDH", namedCurve: "P-256" }, false, [])
-      .then(senderPk => crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"])
+      .then(senderPk => crypto.subtle.importKey("raw", te.encode(pass + 'x'), "PBKDF2", false, ["deriveKey"])
         .then(passKey => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, true, ['unwrapKey']))
         .then(aesKey => crypto.subtle.unwrapKey('jwk', wrappedSk, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) }, { name: "ECDH", namedCurve: "P-256" }, false, ['deriveBits'])
           .then(sk => crypto.subtle.deriveBits({ name: "ECDH", public: senderPk }, sk, 256)
@@ -378,7 +378,7 @@ function decrypt(
           percentage = percentage + updatePercentage
           const elem = document.getElementById(`progress-${fileId}`)
           if (elem !== null && percentage > last) {
-            elem.innerHTML = `${percentage}`
+            elem.innerHTML = `${Math.min(percentage, 100)}`
             last = percentage
           }
         }

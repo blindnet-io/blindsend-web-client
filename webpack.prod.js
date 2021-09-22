@@ -78,8 +78,7 @@ module.exports = merge(common, {
       ],
     }),
     new webpack.DefinePlugin({
-      // HOST: null,
-      HOST: JSON.stringify('http://0.0.0.0:9000'),
+      HOST: null,
       MITM: JSON.stringify('mitm/mitm.html')
     }),
   ]

@@ -120,7 +120,7 @@ function checkPassword(
 ): cmd.Cmd<Msg> {
 
   const check: Task<Msg> = () =>
-    crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveBits"])
+    crypto.subtle.importKey("raw", new TextEncoder().encode(pass + 'x'), "PBKDF2", false, ["deriveBits"])
       .then(passKey => crypto.subtle.deriveBits({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, 256))
       .then(seedPass => crypto.subtle.digest('SHA-256', concat(seedLink, new Uint8Array(seedPass))))
       .then(seed => crypto.subtle.digest('SHA-256', seed)
@@ -333,7 +333,7 @@ function decrypt(
           percentage = percentage + updatePercentage
           const elem = document.getElementById(`progress-${fileId}`)
           if (elem !== null && percentage > last) {
-            elem.innerHTML = `${percentage}`
+            elem.innerHTML = `${Math.min(percentage, 100)}`
             last = percentage
           }
         }

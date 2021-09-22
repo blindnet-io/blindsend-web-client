@@ -123,7 +123,7 @@ function getKeys(pass: string): cmd.Cmd<Msg> {
 
   const task: T.Task<Msg> = pipe(
     T.Do,
-    T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"])),
+    T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass + 'x'), "PBKDF2", false, ["deriveKey"])),
     T.bind('aesKey', ({ passKey }) => () => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, false, ['wrapKey'])),
     T.bind('ecdhKey', () => () => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ['deriveBits'])),
     T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)),

@@ -319,7 +319,7 @@ function generateKeys(pass: string, numFiles: number): cmd.Cmd<Msg> {
 
   const task = pipe(
     T.Do,
-    T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveBits"])),
+    T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass + 'x'), "PBKDF2", false, ["deriveBits"])),
     T.bind('seedPass', ({ passKey }) => () => crypto.subtle.deriveBits({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, 256)),
     T.bind('seed', ({ seedPass }) => () => crypto.subtle.digest('SHA-256', concat(seedLink, new Uint8Array(seedPass)))),
     T.bind('seedKey', ({ seed }) => () => crypto.subtle.importKey("raw", seed, "HKDF", false, ["deriveBits"])),
