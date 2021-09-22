@@ -19,7 +19,7 @@ const view = (): Html<any> => _ => {
       style={{ marginTop: '10px' }}
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Now you can download an individual file or an arhive of all.</p>
+        <p className="tooltip__content-text">Now you can download an individual file or an archive of all.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -27,7 +27,7 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
       <div className="tooltip__content">
         <div className="swiper-slide">
-          <p className="tooltip__content-text">Now you can download an individual file or an arhive of all.</p>
+          <p className="tooltip__content-text">Now you can download an individual file or an archive of all.</p>
         </div>
       </div>
       <div className="tooltip__pagination"></div>

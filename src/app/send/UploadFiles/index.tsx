@@ -36,6 +36,7 @@ type Keys = {
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
 type GeneratedKeys = { type: 'GeneratedKeys', keys: Keys }
+type FailGeneratingKeys = { type: 'FailGeneratingKeys' }
 type StoredMetadata = { type: 'StoredMetadata', linkId: string, signedUploadLinks: { id: string, link: string }[] }
 type FailStoreMetadata = { type: 'FailStoreMetadata' }
 type UploadInitialized = { type: 'UploadInitialized', fileNum: number, sessionUri: string }
@@ -53,6 +54,7 @@ type Msg =
   | AddFiles
   | Upload
   | GeneratedKeys
+  | FailGeneratingKeys
   | StoredMetadata
   | FailStoreMetadata
   | UploadInitialized
@@ -412,6 +414,12 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         )
       ]
     }
+    case 'FailGeneratingKeys': {
+      return [
+        { ...model, hasError: 'UploadFailed', status: { type: 'WaitingForUpload' } },
+        cmd.none
+      ]
+    }
     case 'FailStoreMetadata': {
       return [
         { ...model, hasError: 'UploadFailed', status: { type: 'WaitingForUpload' } },
@@ -630,7 +638,10 @@ const view = (model: Model): Html<Msg> => dispatch => {
               >
                 <div className="main-drop__file-wrap-inner">
                   {noFiles &&
-                    <div className="main-drop__file-wrap-inner-wrap">
+                    <div className="main-drop__file-wrap-inner-wrap" onClick={_ => {
+                      if (model.status.type === 'WaitingForUpload')
+                        document.getElementById('file-pick')?.click()
+                    }}>
                       <span className="main-drop__file-msg">Drag & Drop your files here</span>
                       <span className="main-drop__file-icon-mob">+</span>
                       <span className="main-drop__file-msg-mob">Click here to attach file</span>
@@ -645,7 +656,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
               </div>
 
               <span className="main-drop__browse">
-                or <a
+                <span className="or_files">or</span> <a
                   className="main-drop__browse-link"
                   href=""
                   style={{ cursor: model.status.type === 'WaitingForUpload' ? 'pointer' : 'default' }}

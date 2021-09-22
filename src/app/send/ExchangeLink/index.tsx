@@ -21,7 +21,7 @@ type Model = {
 
 const init: (link: string) => [Model, cmd.Cmd<Msg>] =
   link => {
-    const [leftPanelModel, leftPanelCmd] = LeftPanel.init(1)
+    const [leftPanelModel, leftPanelCmd] = LeftPanel.init(2)
 
     return [
       { leftPanelModel, link, copied: false },

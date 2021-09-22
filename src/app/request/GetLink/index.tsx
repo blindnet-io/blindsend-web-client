@@ -191,7 +191,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         )
 
         return [
-          { ...model, passStrength: { ...model.passStrength, n: model.passStrength.n + 1 }, passFieldModel },
+          { ...model, failed: false, passStrength: { ...model.passStrength, n: model.passStrength.n + 1 }, passFieldModel },
           cmd.batch([
             cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
             estimate
@@ -272,7 +272,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'FailedGeneratingKeys': {
       return [
-        { ...model, failed: true },
+        { ...model, loading: false, failed: true },
         cmd.none
       ]
     }
@@ -310,10 +310,10 @@ const view = (model: Model): Html<Msg> => dispatch => {
   const pass = model.passFieldModel.value
 
   const renderTooltip = () => {
-    if (!model.passStrength.estimated || pass.length === 0)
-      return HowToTooltip.view()(dispatch)
-    else if (model.failed)
+    if (model.failed)
       return ServerErrorTooltip.view()(dispatch)
+    else if (!model.passStrength.estimated || pass.length === 0)
+      return HowToTooltip.view()(dispatch)
     else
       return PasswordStrengthTooltip.view(pass)(dispatch)
   }

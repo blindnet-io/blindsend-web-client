@@ -31,7 +31,7 @@ const view = (
         <p className="tooltip__content-text">Your files will be encrypted on your machine using a key derived from password.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">Only the ones know the password will be able to decrypt the files.</p>
+        <p className="tooltip__content-text">Only the ones who know the password will be able to decrypt the files.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -42,7 +42,7 @@ const view = (
           <p className="tooltip__content-text">Drop your files here and protect them with password. When you are ready, click <b>SEND</b>.</p>
           <p className="tooltip__content-text">You can upload up to <b>{numOfFilesLimit}</b> files.<br />Individual file size limit is <b>{fileSizeLimit}</b> and total limit is <b>{totalSizeLimit}</b>.</p>
           <p className="tooltip__content-text">Your files will be encrypted in the browser using a key derived from password.</p>
-          <p className="tooltip__content-text">Only the ones know the password will be able to decrypt the files.</p>
+          <p className="tooltip__content-text">Only the ones who know the password will be able to decrypt the files.</p>
         </div>
       </div>
     </div>

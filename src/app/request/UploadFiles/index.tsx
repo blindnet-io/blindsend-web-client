@@ -636,7 +636,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
                     <div className="main-drop__file-wrap-inner-wrap">
                       <span className="main-drop__file-msg">Drag & Drop your files here</span>
                       <span className="main-drop__file-icon-mob">+</span>
-                      <span className="main-drop__file-msg-mob">Click here to attach file</span>
+                      <span className="main-drop__file-msg-mob">Click here to attach files</span>
                     </div>
                   }
                   {!noFiles && model.files.map(file =>
@@ -648,7 +648,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
               </div>
 
               <span className="main-drop__browse">
-                or <a
+                <span className="or_files">or</span> <a
                   className="main-drop__browse-link"
                   href=""
                   style={{ cursor: model.status.type === 'WaitingForUpload' ? 'pointer' : 'default' }}

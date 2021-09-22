@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 
 const view = (mobile?: boolean): Html<any> => _ =>
-  <ul className={mobile ? "secondary-menu secondary-menu__header" : "secondary-menu"}>
+  <ul className={mobile ? "secondary-menu secondary-menu__header" : "secondary-menu secondary-menu__desktop"}>
 
     <li className="secondary-menu__item" onClick={e => {
       e.stopPropagation()

@@ -216,7 +216,7 @@ function view(model: Model): Html<Msg> {
                 {/* <li className="site-header__nav-item"><a href="#">Create account</a></li>
                 <li className="site-header__nav-item"><a href="#">Log-in</a></li> */}
               </ul>
-              <div className="site-header__inner">
+              <div className="site-header__inner hidden">
                 <ul className="site-header__nav">
                   {/* <li className="site-header__nav-item"><a href="#">Create account</a></li>
                   <li className="site-header__nav-item"><a href="#">Log-in</a></li> */}

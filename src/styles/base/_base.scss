@@ -104,13 +104,9 @@ textarea,
 
 .site-page__row {
   height: 100%;
-  // padding: 20px 25px;
-  // padding: 7px 25px;
   padding: 8px 15px;
+  padding-bottom: 5px;
 
-  // @include mq($lap-large) {
-  //   padding: 0;
-  // }
   @include mq($lg) {
     padding: 0;
   }

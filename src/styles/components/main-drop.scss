@@ -153,6 +153,12 @@
   }
 }
 
+.or_files {
+  @include mq($lg) {
+    display: none;  
+  }
+}
+
 .main-drop__file {
   position: relative;
   display: flex;

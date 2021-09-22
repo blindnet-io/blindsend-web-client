@@ -16,6 +16,7 @@ const view = (): Html<any> => _ => {
     <div className="main-navigation__icon" onClick={() => {
       document.querySelector('.main-navigation__icon')?.classList.toggle('open')
       document.querySelector('body')?.classList.toggle('hidden')
+      document.querySelector('.site-header__inner')?.classList.toggle('hidden')
       document.querySelector('.site-header__inner')?.classList.toggle('active')
       document.querySelector('.secondary-menu__header')?.classList.toggle('active')
     }}>
