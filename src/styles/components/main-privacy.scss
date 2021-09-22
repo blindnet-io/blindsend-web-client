@@ -122,6 +122,9 @@
 }
 
 .site-privacy__close {
+  position: fixed;
+  right: 40px;
+  top: 35px;
   font-size: 22px;
   display: flex;
   align-items: center;

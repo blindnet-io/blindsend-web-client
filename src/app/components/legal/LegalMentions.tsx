@@ -26,6 +26,12 @@ const view = (): Html<any> => _ => {
       </div>
       <div className="main-privacy__content">
         <h1 className="main-privacy__title">Legal Mentions</h1>
+        <p style={{ maxWidth: '800px', wordWrap: 'break-word' }}>
+          Company: BLINDNET Inc<br />
+          Incorporate in: Delaware, USA<br />
+          Email: privacy@blindnet.io<br />
+          Publication director: Vuk JANOSEVIC<br />
+        </p>
       </div>
     </div>
   )
