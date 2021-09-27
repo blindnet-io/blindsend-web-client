@@ -18,7 +18,7 @@ const view = (): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">A password will be generated for you in the background and saved in this browser.</p>
+        <p className="tooltip__content-text">An encryption key will be generated for you in the background and saved in this browser.</p>
         <p className="tooltip__content-text">You only have to share the link with the file sender and wait.</p>
       </SwiperSlide>
     </Swiper>
@@ -27,7 +27,7 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">A password will be generated for you in the background and saved in this browser.</p>
+          <p className="tooltip__content-text">An encryption key will be generated for you in the background and saved in this browser.</p>
           <p className="tooltip__content-text">You only have to share the link with the file sender and wait.</p>
         </div>
       </div>
@@ -37,7 +37,14 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__wrap col-lg-3">
       <div className="tooltip">
         <div className="tooltip__warning-wrap">
-          <span className="tooltip__warning">This version uses cookies according to our <a href="">Cookie Policy.</a></span>
+          <span className="tooltip__warning">This version uses IndexedDB API. <br /> Check our &#x200B;
+            <a href="#" onClick={e => {
+              e.stopPropagation()
+              document.querySelector('.js-main-privacy')?.classList.add('show')
+            }}>
+              Cookie Policy.
+            </a>
+          </span>
         </div>
 
         <div className="tooltip__inner tooltip__inner--pink">

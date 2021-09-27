@@ -18,7 +18,7 @@ const view = (): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Copy the link, and ask the file sennder to visit the link and upload the file.</p>
+        <p className="tooltip__content-text">Copy the link, and ask the file sender to visit the link and upload the file.</p>
         <p className="tooltip__content-text">The file will be <b>end-to-end</b> encrypted from him to you, and only you will be able to decrypt it.</p>
       </SwiperSlide>
       <SwiperSlide>
@@ -30,7 +30,7 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Copy the link, and ask the file sennder to visit the link and upload the file.</p>
+          <p className="tooltip__content-text">Copy the link, and ask the file sender to visit the link and upload the file.</p>
           <p className="tooltip__content-text">The file will be <b>end-to-end</b> encrypted from him to you, and only you will be able to decrypt it.</p>
         </div>
         <div className="tooltip__slide">

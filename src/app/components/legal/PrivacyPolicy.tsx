@@ -34,7 +34,7 @@ const view = (): Html<any> => _ => {
 
         <h2>Cookies</h2>
         <p>We don't store cookies.</p>
-        <p>If a passwordless link is requested, we store the requestor's private key in browser's IndexedDB. The data stored in IndexedDB is stored locally inside your browser and never sent to blindsend server. It's intended to authenticate you and generate a key to decrypt files you requested.</p>
+        <p>If a passwordless link is requested, we store the requestor's private key in browser's database (IndexedDB API). The data is stored locally, in your browser, and is never sent to the blindsend server. It's intended to authenticate you and generate a key to decrypt files you requested.</p>
 
         <h2>Who we share your data with</h2>
         <p>We do not share your data with anyone.</p>
