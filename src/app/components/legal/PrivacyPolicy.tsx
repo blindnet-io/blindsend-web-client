@@ -27,28 +27,35 @@ const view = (): Html<any> => _ => {
       <div className="main-privacy__content">
         <h1 className="main-privacy__title">Privacy Policy</h1>
         <h2>Who we are</h2>
-        <p>Our website address is: https://www.blindsend.io</p>
-        <h2>What personal data we collect and why we collect it</h2>
-        <p>When visitors leave comments on the site we collect the data shown in the comments form, and also the visitor’s IP address and browser user agent string to help spam detection.</p>
-        <h2>Media</h2>
-        <p>If you upload images to the website, you should avoid uploading images with embedded location data (EXIF GPS) included. Visitors to the website can download and extract any location data from images on the website.</p>
+        <p>Blindsend is an open source tool for private, end-to-end encrypted file exchange between two parties created by <a href="https://blindnet.io" target="_blank">Blindnet Inc.</a></p>
+
+        <h2>What sensitive personal data we collect</h2>
+        <p>We don’t collect any sensitive personal data.</p>
+
         <h2>Cookies</h2>
-        <p>If you leave a comment on our site you may opt-in to saving your name, email address and website in cookies. These are for your convenience so that you do not have to fill in your details again when you leave another comment. These cookies will last for one year.</p>
-        <p>If you visit our login page, we will set a temporary cookie to determine if your browser accepts cookies. This cookie contains no personal data and is discarded when you close your browser.</p>
-        <p>When you log in, we will also set up several cookies to save your login information and your screen display choices. Login cookies last for two days, and screen options cookies last for a year. If you select “Remember Me”, your login will persist for two weeks. If you log out of your account, the login cookies will be removed.</p>
-        <p>If you edit or publish an article, an additional cookie will be saved in your browser. This cookie includes no personal data and simply indicates the post ID of the article you just edited. It expires after 1 day.</p>
-        <h2>Embedded content from other websites</h2>
-        <p>Articles on this site may include embedded content (e.g. videos, images, articles, etc.). Embedded content from other websites behaves in the exact same way as if the visitor has visited the other website.</p>
-        <p>These websites may collect data about you, use cookies, embed additional third-party tracking, and monitor your interaction with that embedded content, including tracking your interaction with the embedded content if you have an account and are logged in to that website.</p>
+        <p>We don't store cookies.</p>
+        <p>If a passwordless link is requested, we store the requestor's private key in browser's IndexedDB. The data stored in IndexedDB is stored locally inside your browser and never sent to blindsend server. It's intended to authenticate you and generate a key to decrypt files you requested.</p>
+
         <h2>Who we share your data with</h2>
-        <p>Blindsend</p>
+        <p>We do not share your data with anyone.</p>
+        <p>We use Google servers to host the platform and to provide the service. We don’t store any personal data there. Since you’re uploading files on the Google servers, Google can potentially collect your IP address.</p>
+
         <h2>How long we retain your data</h2>
-        <p>If you leave a comment, the comment and its metadata are retained indefinitely. This is so we can recognize and approve any follow-up comments automatically instead of holding them in a moderation queue.</p>
-        <p>For users that register on our website (if any), we also store the personal information they provide in their user profile. All users can see, edit, or delete their personal information at any time (except they cannot change their username). Website administrators can also see and edit that information.</p>
+        <p>All the data that you’re uploading on blindsend is cleared after a week.</p>
+
         <h2>What rights you have over your data</h2>
         <p>If you have an account on this site, or have left comments, you can request to receive an exported file of the personal data we hold about you, including any data you have provided to us. You can also request that we erase any personal data we hold about you. This does not include any data we are obliged to keep for administrative, legal, or security purposes.</p>
-        <h2>Where we send your data</h2>
-        <p>Visitor comments may be checked through an automated spam detection service.</p>
+
+        <h2>Changes to this Privacy Policy</h2>
+        <p>We may update our Privacy Policy from time to time.</p>
+        <p>You are advised to review this Privacy Policy periodically for any changes. Changes to this Privacy Policy are effective when they are posted on this page.</p>
+
+        <h2>General provisions</h2>
+        <p>The Privacy Policy is governed by French law. In the event of a difficulty arising from pre-contractual relations or related to the validity, execution or interpretation of the present terms, the parties will seek an amicable solution as a priority. In the absence of an amicable agreement, the dispute will be submitted to the courts of Paris, that shall have exclusive jurisdiction to hear any dispute arising between the parties.</p>
+
+        <h2>Contact Us</h2>
+        <p>If you have any questions about this Privacy Policy, You can contact us.</p>
+        <p>By email: privacy@blindnet.io</p>
       </div>
     </div>
   )
