@@ -38,6 +38,7 @@ type Model =
   | { type: 'Loading', linkId?: string, seed?: string }
   | InitializedModel
   | { type: 'Error' }
+  | { type: 'LinkNotFound' }
 
 function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 
@@ -70,7 +71,7 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
       result,
       E.fold<http.HttpError, Resp, Msg>(
         e => {
-          if (e._tag === 'BadStatus')
+          if (e._tag === 'BadUrl')
             return ({ type: 'FailBadLink' })
           else
             return ({ type: 'FailGetStatus' })
@@ -118,7 +119,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'FailBadLink': {
       return [
-        { type: 'Error' },
+        { type: 'LinkNotFound' },
         cmd.none
       ]
     }
@@ -226,7 +227,8 @@ function view(model: Model): Html<Msg> {
     switch (model.type) {
       case 'Loading': return LoadingScreen.view()(dispatch)
       case 'Ready': return renderScreen(model)
-      case 'Error': return ErrorScreen.view()(dispatch)
+      case 'Error': return ErrorScreen.view('AppError')(dispatch)
+      case 'LinkNotFound': return ErrorScreen.view('LinkNotFound')(dispatch)
     }
   }
 

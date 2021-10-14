@@ -241,7 +241,7 @@ function view(model: Model): Html<Msg> {
     switch (model.type) {
       case 'Loading': return LoadingScreen.view()(dispatch)
       case 'Ready': return renderRequest(model)
-      case 'Error': return ErrorScreen.view()(dispatch)
+      case 'Error': return ErrorScreen.view('AppError')(dispatch)
     }
   }
 

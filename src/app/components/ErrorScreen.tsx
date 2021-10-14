@@ -9,11 +9,19 @@ import * as PrivacyPolicy from './legal/PrivacyPolicy'
 import * as LegalMentions from './legal/LegalMentions'
 import * as TermsAndConditions from './legal/TermsAndCondidions'
 
-import * as ServerErrorTooltip from '../tooltip/ServerError'
+import * as AppErrorTooltip from '../tooltip/AppError'
+import * as LinkNotFoundTooltip from '../tooltip/LinkNotFound'
 
-function view(): Html<any> {
+function view(errorType: 'LinkNotFound' | 'AppError'): Html<any> {
 
   return dispatch => {
+
+    function renderErrorTooltip() {
+      switch (errorType) {
+        case 'LinkNotFound': return LinkNotFoundTooltip.view()(dispatch)
+        case 'AppError': return AppErrorTooltip.view()(dispatch)
+      }
+    }
 
     return (
       <div className="site-page">
@@ -55,7 +63,7 @@ function view(): Html<any> {
               </div>
             </div>
 
-            {ServerErrorTooltip.view()(dispatch)}
+            {renderErrorTooltip()}
 
           </div>
 
