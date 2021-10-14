@@ -37,7 +37,7 @@ type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
 type GeneratedKeys = { type: 'GeneratedKeys', keys: Keys }
 type FailGeneratingKeys = { type: 'FailGeneratingKeys' }
-type StoredMetadata = { type: 'StoredMetadata', linkId: string, signedUploadLinks: { id: string, link: string }[] }
+type StoredMetadata = { type: 'StoredMetadata', linkId: string, signedUploadLinks: { id: string, link: string, customTimeHeader: string }[] }
 type FailStoreMetadata = { type: 'FailStoreMetadata' }
 type UploadInitialized = { type: 'UploadInitialized', fileNum: number, sessionUri: string }
 type FailUploadingFile = { type: 'FailUploadingFile' }
@@ -89,7 +89,7 @@ type Model = {
   totalSize: number,
   constraints: Constraints,
   hasError: false | 'FileTooBig' | 'TooManyFiles' | 'TotalSizeTooBig' | 'UploadFailed' | 'Unexpected',
-  uploadLinks: { id: string, link: string }[],
+  uploadLinks: { id: string, link: string, customTimeHeader: string }[],
   status:
   | { type: 'WaitingForUpload' }
   | { type: 'InitializedUpload' }
@@ -135,7 +135,12 @@ function encryptAndStoreMetadata(
       })),
     T.chain(({ resp }) =>
       resp.status === 200
-        ? () => resp.json().then(r => ({ type: 'StoredMetadata', linkId: r.link_id, signedUploadLinks: r.upload_links }))
+        ? () => resp.json().then(r => ({
+          type: 'StoredMetadata',
+          linkId: r.link_id,
+          // @ts-ignore
+          signedUploadLinks: r.upload_links.map(l => ({ id: l.id, link: l.link, customTimeHeader: l.custom_time_header }))
+        }))
         : T.of({ type: 'FailStoreMetadata' })),
   )
 
@@ -147,6 +152,7 @@ function encryptAndStoreMetadata(
 
 function fullUpload(
   link: string,
+  customTimeHeader: string,
   key: CryptoKey,
   iv: Uint8Array,
   fileData: Blob,
@@ -162,7 +168,8 @@ function fullUpload(
       fetch(link, {
         method: 'PUT',
         headers: {
-          'x-goog-content-length-range': '0,5000000'
+          'x-goog-content-length-range': '0,5000000',
+          'x-goog-custom-time': customTimeHeader
         },
         body: encryptedFileData
       })),
@@ -178,7 +185,11 @@ function fullUpload(
   )
 }
 
-function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg> {
+function initStorageResumableUpload(
+  link: string,
+  customTimeHeader: string,
+  fileNum: number,
+): cmd.Cmd<Msg> {
 
   const init: T.Task<Msg> = () =>
     fetch(link, {
@@ -186,7 +197,8 @@ function initStorageResumableUpload(link: string, fileNum: number): cmd.Cmd<Msg>
       headers: {
         'Content-Length': '0',
         'x-goog-resumable': 'start',
-        'x-goog-content-length-range': '0,2147483648'
+        'x-goog-content-length-range': '0,2147483648',
+        'x-goog-custom-time': customTimeHeader
       }
     }).then<Msg>(resp => {
       if (resp.status === 201) {
@@ -437,8 +449,19 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           status: { type: 'Uploading', keys: model.status.keys, seed: model.status.seed, linkId: msg.linkId }
         },
         model.files[0].fullUpload
-          ? fullUpload(msg.signedUploadLinks[0].link, model.status.keys.fileKeys[0], model.status.keys.ivs.files[0], model.files[0].file, 0)
-          : initStorageResumableUpload(msg.signedUploadLinks[0].link, 0)
+          ? fullUpload(
+            msg.signedUploadLinks[0].link,
+            msg.signedUploadLinks[0].customTimeHeader,
+            model.status.keys.fileKeys[0],
+            model.status.keys.ivs.files[0],
+            model.files[0].file,
+            0
+          )
+          : initStorageResumableUpload(
+            msg.signedUploadLinks[0].link,
+            msg.signedUploadLinks[0].customTimeHeader,
+            0
+          )
       ]
     }
     case 'UploadInitialized': {
@@ -504,6 +527,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
           { ...model, files },
           fullUpload(
             model.uploadLinks[nextFileNum].link,
+            model.uploadLinks[nextFileNum].customTimeHeader,
             model.status.keys.fileKeys[nextFileNum],
             model.status.keys.ivs.files[nextFileNum],
             model.files[nextFileNum].file,
@@ -514,7 +538,11 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
       return [
         { ...model, files },
-        initStorageResumableUpload(model.uploadLinks[nextFileNum].link, nextFileNum)
+        initStorageResumableUpload(
+          model.uploadLinks[nextFileNum].link,
+          model.uploadLinks[nextFileNum].customTimeHeader,
+          nextFileNum
+        )
       ]
     }
     case 'UploadFinished': {
