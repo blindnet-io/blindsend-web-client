@@ -46,7 +46,8 @@ module.exports = merge(common, {
     }),
     new webpack.DefinePlugin({
       HOST: JSON.stringify('http://0.0.0.0:9000'),
-      MITM: null
+      MITM: null,
+      VERSION: JSON.stringify(require("./package.json").version)
     })
   ]
 });

@@ -79,7 +79,8 @@ module.exports = merge(common, {
     }),
     new webpack.DefinePlugin({
       HOST: null,
-      MITM: JSON.stringify('mitm/mitm.html')
+      MITM: JSON.stringify('mitm/mitm.html'),
+      VERSION: JSON.stringify(require("./package.json").version)
     }),
   ]
 });

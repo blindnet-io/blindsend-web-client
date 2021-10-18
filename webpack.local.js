@@ -63,10 +63,6 @@ module.exports = merge(common, {
       minify: false
     }),
     new InlineSourcePlugin(HtmlWebpackPlugin),
-    new webpack.DefinePlugin({
-      HOST: null,
-      MITM: null
-    }),
     new CopyPlugin({
       patterns: [
         { from: './src/images/favicon.png', to: 'images/favicon.png' },
@@ -74,5 +70,10 @@ module.exports = merge(common, {
         { from: './src/libs/stream-saver_mitm', to: 'mitm' },
       ],
     }),
+    new webpack.DefinePlugin({
+      HOST: null,
+      MITM: null,
+      VERSION: JSON.stringify(require("./package.json").version)
+    })
   ]
 });
