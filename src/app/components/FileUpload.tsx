@@ -33,7 +33,7 @@ const view = (
       <div className="main-drop__file-bar-status">
         <span className="main-drop__file-bar-status-text">{filesize(size)}</span>
         {
-          !tooBig &&
+          !tooBig && !disabled &&
           <span
             className={disabled ? "main-drop__file-cross-disabled" : "main-drop__file-cross"}
             onClick={() => disabled ? undefined : dispatch({ type: 'Remove', id: id })}
