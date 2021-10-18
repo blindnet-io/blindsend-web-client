@@ -7,7 +7,7 @@ import AmazingEmoji from '../../../../images/amazing.svg'
 
 SwiperCore.use([Pagination])
 
-const view = (): Html<any> => _ => {
+const view = (passNotCorrect: Boolean): Html<any> => _ => {
 
   const mobile =
     <Swiper
@@ -19,7 +19,7 @@ const view = (): Html<any> => _ => {
       style={{ marginTop: '10px' }}
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Enter password to see the files.</p>
+        <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password set by the sender to see files.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -27,7 +27,7 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
       <div className="tooltip__content">
         <div className="swiper-slide">
-          <p className="tooltip__content-text">Enter password to see the files.</p>
+          <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password set by the sender to see files.</p>
         </div>
       </div>
       <div className="tooltip__pagination"></div>

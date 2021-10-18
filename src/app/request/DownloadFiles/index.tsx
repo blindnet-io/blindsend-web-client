@@ -105,6 +105,7 @@ type Model = {
   typing: number,
   blockingAction: BlockingAction,
   passwordCorrect: boolean,
+  passwordChecked: boolean,
   skNotFound?: boolean,
   decryptionFailed?: boolean,
   seed?: Uint8Array,
@@ -487,6 +488,7 @@ function init(
     typing: 0,
     blockingAction: false,
     passwordCorrect: false,
+    passwordChecked: false,
     fileStreams: [],
     decryptionFailed: false,
 
@@ -553,7 +555,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'PassNotOk': {
       return [
-        { ...model, blockingAction: false },
+        { ...model, passwordChecked: true, blockingAction: false },
         cmd.none
       ]
     }
@@ -566,7 +568,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     case 'PassOk': {
 
       return [
-        { ...model, blockingAction: 'decryptingMetadata', passwordCorrect: true, seed: msg.seed },
+        { ...model, passwordChecked: true, blockingAction: 'decryptingMetadata', passwordCorrect: true, seed: msg.seed },
         decryptMetadata(msg.seed, model.encMetadata)
       ]
     }
@@ -765,7 +767,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
     else if (model.decryptionFailed)
       return DecryptionFailedTooltip.view()(dispatch)
     else if (!model.passwordCorrect)
-      return FilesReadyTooltip.view()(dispatch)
+      return FilesReadyTooltip.view(model.passwordChecked)(dispatch)
     else
       return MetadataDecryptedTooltip.view()(dispatch)
   }
