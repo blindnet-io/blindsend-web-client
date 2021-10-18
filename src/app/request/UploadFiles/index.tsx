@@ -35,6 +35,7 @@ type Keys = {
 
 type AddFiles = { type: 'AddFiles', files: File[] }
 type Upload = { type: 'Upload' }
+type CancelUpload = { type: 'CancelUpload' }
 type GeneratedKeys = { type: 'GeneratedKeys', keys: Keys }
 type FailGeneratingKeys = { type: 'FailGeneratingKeys' }
 type StoredMetadata = { type: 'StoredMetadata', signedUploadLinks: { id: string, link: string, customTimeHeader: string }[] }
@@ -52,6 +53,7 @@ type FileMsg = { type: 'FileMsg', msg: FileRow.Msg }
 type Msg =
   | AddFiles
   | Upload
+  | CancelUpload
   | GeneratedKeys
   | FailGeneratingKeys
   | StoredMetadata
@@ -397,12 +399,24 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         {
           ...model,
           files,
-          hasError: false
+          hasError: false,
+          status: { type: 'InitializedUpload' }
         },
         generateKeys(model.reqPublicKey, files.length)
       ]
     }
+    case 'CancelUpload': {
+      return [
+        {
+          ...model,
+          status: { type: 'WaitingForUpload' },
+          files: model.files.map(f => ({ ...f, progress: 0, conmplete: false }))
+        },
+        cmd.none
+      ]
+    }
     case 'GeneratedKeys': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
 
       const metadata = JSON.stringify(
         model.files.map((f, i) => ({
@@ -429,18 +443,24 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'FailGeneratingKeys': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       return [
         { ...model, hasError: 'UploadFailed', status: { type: 'WaitingForUpload' } },
         cmd.none
       ]
     }
     case 'FailStoreMetadata': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       return [
         { ...model, hasError: 'UploadFailed', status: { type: 'WaitingForUpload' } },
         cmd.none
       ]
     }
     case 'StoredMetadata': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       if (model.status.type !== 'GeneratedKeys')
         return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
@@ -467,6 +487,8 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'UploadInitialized': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       if (model.status.type !== 'Uploading')
         return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
@@ -487,6 +509,8 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'UploadFileChunk': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       if (model.status.type !== 'Uploading')
         return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
@@ -511,6 +535,8 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'UploadedFile': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       if (model.status.type !== 'Uploading')
         return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
@@ -548,6 +574,8 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'UploadFinished': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       if (model.status.type !== 'Uploading')
         return [{ ...model, hasError: 'Unexpected' }, cmd.none]
 
@@ -560,6 +588,8 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'FailUploadingFile': {
+      if (model.status.type === 'WaitingForUpload') return [model, cmd.none]
+
       const files = model.files.map(f => ({ ...f, progress: 0, complete: false }))
       return [
         {
@@ -614,9 +644,9 @@ const view = (model: Model): Html<Msg> => dispatch => {
             return HowToTooltip.view()(dispatch)
           }
           case 'Finished': return UploadedTooltip.view()(dispatch)
-          case 'InitializedUpload': return UploadingdTooltip.view()(dispatch)
-          case 'GeneratedKeys': return UploadingdTooltip.view()(dispatch)
-          case 'Uploading': return UploadingdTooltip.view()(dispatch)
+          case 'InitializedUpload': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
+          case 'GeneratedKeys': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
+          case 'Uploading': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
         }
       }
       case 'FileTooBig': return FileTooBigTooltip.view(filesize(model.constraints.singleSize))(dispatch)

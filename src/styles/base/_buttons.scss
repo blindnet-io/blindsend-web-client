@@ -25,6 +25,10 @@
   border: none;
   background: linear-gradient(116.16deg, rgba(55, 106, 123, 0.7) 16.47%, rgba(87, 58, 124, 0.7) 83.53%);
 
+  &.secondary {
+    background: transparent;
+  }
+
   // border: 1px solid;
   // // background: linear-gradient(116.16deg, rgba(55, 106, 123, 0.7) 16.47%, rgba(87, 58, 124, 0.7) 83.53%);
   // background-clip: padding-box;
@@ -127,6 +131,39 @@
       transition: $dur $ease;
       opacity: 0;
     }
+  }
+}
+
+.btn-secondary-wrap {
+  position: relative;
+  margin-top: 26px;
+  border-radius: 8px;
+  border: 1px solid;
+  background-origin: border-box;
+  background-clip: content-box, border-box;
+  transition: $dur $ease;
+
+  @include mq($sm) {
+    border-radius: 6px;
+  }
+
+  @include hover {
+    &::after {
+      opacity: 0.2;
+    }
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 2px;
+    right: 2px;
+    background: linear-gradient(116.16deg, rgba($green, 1) 16.47%, rgba($purple, 1) 83.53%);
+    border-radius: 8px;
+    transition: $dur $ease;
+    opacity: 0;
   }
 }
 

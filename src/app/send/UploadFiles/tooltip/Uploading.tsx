@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 import { SpinnerDiamond } from 'spinners-react';
 
-const view = (): Html<any> => _ => {
+const view = (cancel: () => void): Html<any> => _ => {
 
   return (
     <div className="tooltip__wrap col-lg-3">
@@ -21,6 +21,14 @@ const view = (): Html<any> => _ => {
             <div className="tooltip__content">
               <div className="tooltip__slide">
                 <p className="tooltip__content-text">Please don't close the tab until the upload is finished.</p>
+                <div className="btn-secondary-wrap">
+                  <button
+                    onClick={cancel}
+                    className="btn secondary"
+                  >
+                    CANCEL
+                  </button>
+                </div>
               </div>
             </div>
           </div>
