@@ -12,7 +12,14 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__img">
             <img src={WeakEmoji} alt="" />
           </div>
-          <h2 className="tooltip__title section-title" style={{ fontSize: '24px' }}>Link expired or not found</h2>
+          <h2 className="tooltip__title section-title" style={{ fontSize: '24px', marginTop: '15px' }}>Link expired or not found</h2>
+          <div className="tooltip__content-container">
+            <div className="tooltip__content">
+              <div className="tooltip__slide">
+                <p className="tooltip__content-text">Note that the links are valid only for 7 days,<br />after which the files are deleted.</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
