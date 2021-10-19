@@ -380,7 +380,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
         return { file, id: uuidv4(), progress: 0, complete: false, tooBig, fullUpload: file.size <= fullUploadLimit }
       })
-      const files = [...model.files, ...newFiles]
+      const files = [...model.files.filter(f => !f.tooBig), ...newFiles]
 
       return [{
         ...model,
@@ -617,7 +617,7 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
     }
     case 'FileMsg': {
       if (msg.msg.type === 'Remove') {
-        const files = model.files.filter(file => file.id != msg.msg.id)
+        const files = model.files.filter(file => file.id != msg.msg.id && !file.tooBig)
         return [{
           ...model,
           files,
