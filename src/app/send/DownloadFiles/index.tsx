@@ -19,6 +19,7 @@ import * as VerifyingPasswordTooltip from './tooltip/VerifyingPassword'
 import * as MetadataDecryptedTooltip from './tooltip/MetadataDecrypted'
 import * as DecryptingFilesTooltip from './tooltip/Downloading'
 import * as DecryptionFailedTooltip from './tooltip/DecryptionFailed'
+import * as LinkMalformedTooltip from '../../tooltip/LinkMalformed'
 
 import {
   ReadableStream,
@@ -44,6 +45,7 @@ const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(Transform
 type CheckPassword = { type: 'CheckPassword' }
 type PassNotOk = { type: 'PassNotOk' }
 type PassOk = { type: 'PassOk', seed: Uint8Array }
+type FailBadSeed = { type: 'FailBadSeed' }
 type DecryptedMetadata = { type: 'DecryptedMetadata', files: { name: string, size: number, id: string, iv: Uint8Array }[], fileKeys: CryptoKey[] }
 type FailedDecryptingData = { type: 'FailedDecryptingData' }
 
@@ -65,6 +67,7 @@ type Msg =
   | CheckPassword
   | PassNotOk
   | PassOk
+  | FailBadSeed
   | DecryptedMetadata
   | FailedDecryptingData
   | DownloadAll
@@ -96,6 +99,7 @@ type Model = {
   passwordCorrect: boolean,
   passwordChecked: boolean,
   decryptionFailed?: boolean,
+  badSeedFail: boolean,
   seed?: Uint8Array,
   fileKeys?: CryptoKey[],
   files?: {
@@ -117,7 +121,8 @@ function checkPassword(
   salt: Uint8Array,
   seedHash: Uint8Array,
   seedLink: Uint8Array,
-  pass: string
+  pass: string,
+  pLess: boolean = false
 ): cmd.Cmd<Msg> {
 
   const check: Task<Msg> = () =>
@@ -128,7 +133,9 @@ function checkPassword(
         .then<Msg>(newSeedHash =>
           equal(new Uint8Array(newSeedHash), seedHash)
             ? { type: 'PassOk', seed: new Uint8Array(seed) }
-            : { type: 'PassNotOk' }
+            : pLess
+              ? { type: 'FailBadSeed' }
+              : { type: 'PassNotOk' }
         )
       )
       .catch<Msg>(_ => ({ type: 'PassNotOk' }))
@@ -444,6 +451,7 @@ function init(
     passwordChecked: false,
     fileStreams: [],
     decryptionFailed: false,
+    badSeedFail: false,
 
     passFieldModel,
     leftPanelModel
@@ -456,7 +464,7 @@ function init(
       cmd.batch([
         cmd.map<PasswordField.Msg, Msg>(msg => ({ type: 'PasswordFieldMsg', msg }))(passFieldCmd),
         cmd.map<LeftPanel.Msg, Msg>(msg => ({ type: 'LeftPanelMsg', msg }))(leftPanelCmd),
-        checkPassword(salt, seedHash, seedLink, '')
+        checkPassword(salt, seedHash, seedLink, '', true)
       ])
     ]
   }
@@ -503,6 +511,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
         { ...model, passwordChecked: true, blockingAction: 'decryptingMetadata', passwordCorrect: true, seed: msg.seed },
         decryptMetadata(msg.seed, model.encMetadata)
       ]
+    }
+    case 'FailBadSeed': {
+      return [{ ...model, badSeedFail: true }, cmd.none]
     }
     case 'DecryptedMetadata': {
       return [
@@ -678,7 +689,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
 
 const view = (model: Model): Html<Msg> => dispatch => {
   const renderTooltip = () => {
-    if (model.blockingAction === 'downloadingFiles')
+    if (model.badSeedFail)
+      return LinkMalformedTooltip.view()(dispatch)
+    else if (model.blockingAction === 'downloadingFiles')
       return DecryptingFilesTooltip.view()(dispatch)
     if ((model.blockingAction !== false && ['checkingPass', 'decryptingMetadata', 'gettingSeed'].includes(model.blockingAction)) || model.typing > 0)
       return VerifyingPasswordTooltip.view()(dispatch)

@@ -44,7 +44,7 @@ type InitializedModel =
 
 type Model =
   | { type: 'Loading', linkId: string, seed: Uint8Array }
-  | { type: 'Error' }
+  | { type: 'Error', reason: 'AppError' | 'ServerError' | 'LinkMalformed' }
   | InitializedModel
 
 const uploadConstraints = {
@@ -114,7 +114,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
   switch (msg.type) {
     case 'GotMetadata': {
       if (model.type != 'Loading')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
         model.linkId,
@@ -133,18 +133,18 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'FailGetMetadata': {
       return [
-        { type: 'Error' },
+        { type: 'Error', reason: 'ServerError' },
         cmd.none
       ]
     }
 
     case 'UploadFilesMsg': {
       if (model.type != 'Ready' || model.screen.type != 'UploadFiles')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
       if (msg.msg.type === 'UploadFinished') {
         if (model.screen.model.status.type !== 'Uploading')
-          return [{ type: 'Error' }, cmd.none]
+          return [{ type: 'Error', reason: 'ServerError' }, cmd.none]
 
         const { linkId, seed } = model.screen.model.status
 
@@ -166,7 +166,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'ExchangeLinkMsg': {
       if (model.type != 'Ready' || model.screen.type != 'ExchangeLink')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
       const [exchangeLinkModel, exchangeLinkCmd] = ExchangeLink.update(msg.msg, model.screen.model)
 
@@ -177,7 +177,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'DownloadFilesMsg': {
       if (model.type != 'Ready' || model.screen.type != 'DownloadFiles')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.update(msg.msg, model.screen.model)
 
@@ -241,7 +241,7 @@ function view(model: Model): Html<Msg> {
     switch (model.type) {
       case 'Loading': return LoadingScreen.view()(dispatch)
       case 'Ready': return renderRequest(model)
-      case 'Error': return ErrorScreen.view('AppError')(dispatch)
+      case 'Error': return ErrorScreen.view(model.reason)(dispatch)
     }
   }
 

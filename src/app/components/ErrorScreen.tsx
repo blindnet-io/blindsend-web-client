@@ -11,15 +11,18 @@ import * as TermsAndConditions from './legal/TermsAndCondidions'
 
 import * as AppErrorTooltip from '../tooltip/AppError'
 import * as LinkNotFoundTooltip from '../tooltip/LinkNotFound'
+import * as LinkMalformedTooltip from '../tooltip/LinkMalformed'
 
-function view(errorType: 'LinkNotFound' | 'AppError'): Html<any> {
+function view(errorType: 'LinkNotFound' | 'LinkMalformed' | 'AppError' | 'ServerError'): Html<any> {
 
   return dispatch => {
 
     function renderErrorTooltip() {
       switch (errorType) {
         case 'LinkNotFound': return LinkNotFoundTooltip.view()(dispatch)
+        case 'LinkMalformed': return LinkMalformedTooltip.view()(dispatch)
         case 'AppError': return AppErrorTooltip.view()(dispatch)
+        case 'ServerError': return AppErrorTooltip.view()(dispatch)
       }
     }
 

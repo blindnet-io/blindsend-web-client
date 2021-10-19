@@ -66,8 +66,8 @@ type InitializedModel =
 
 type Model =
   | { type: 'Loading', linkId: string, key: string }
+  | { type: 'Error', reason: 'AppError' | 'ServerError' | 'LinkMalformed' }
   | InitializedModel
-  | { type: 'Error' }
 
 const uploadConstraints = {
   numOfFiles: 10,
@@ -158,9 +158,16 @@ function init(
       if (key === undefined || linkId === undefined || keyHash === undefined)
         throw new Error('Wrong state')
 
+      let keyHashArr
+      try {
+        keyHashArr = b64url2arr(keyHash)
+      } catch {
+        return [{ type: 'Error', reason: 'LinkMalformed' }, cmd.none]
+      }
+
       return [
         { type: 'Loading', linkId, key: keyHash },
-        checkPk(key, b64url2arr(keyHash))
+        checkPk(key, keyHashArr)
       ]
     }
     case '2': {
@@ -193,12 +200,11 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'PkNotOk': {
       return [
-        { type: 'Error' },
+        { type: 'Error', reason: 'LinkMalformed' },
         cmd.none
       ]
     }
     case 'GotMetadata': {
-      console.log(msg)
       if (model.type != 'Loading') throw new Error('unexpected state')
 
       const [downloadFilesModel, downloadFilesCmd] = DownloadFiles.init(
@@ -221,7 +227,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'FailGetMetadata': {
       return [
-        { type: 'Error' },
+        { type: 'Error', reason: 'ServerError' },
         cmd.none
       ]
     }
@@ -341,7 +347,7 @@ function view(model: Model): Html<Msg> {
     switch (model.type) {
       case 'Loading': return LoadingScreen.view()(dispatch)
       case 'Ready': return renderRequest(model)
-      case 'Error': return ErrorScreen.view('AppError')(dispatch)
+      case 'Error': return ErrorScreen.view(model.reason)(dispatch)
     }
   }
 

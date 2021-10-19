@@ -37,7 +37,7 @@ type InitializedModel =
 type Model =
   | { type: 'Loading', linkId?: string, seed?: string }
   | InitializedModel
-  | { type: 'Error' }
+  | { type: 'Error', reason: 'AppError' | 'ServerError' | 'LinkMalformed' }
   | { type: 'LinkNotFound' }
 
 function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
@@ -125,13 +125,13 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'FailGetStatus': {
       return [
-        { type: 'Error' },
+        { type: 'Error', reason: 'ServerError' },
         cmd.none
       ]
     }
     case 'GotStatus': {
       if (model.type != 'Loading')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
       switch (msg.status.workflow) {
         case 'ReqFile': {
@@ -147,10 +147,17 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         case 'SendFile': {
           const { linkId, seed } = model
           if (!linkId || !seed) {
-            return [{ type: 'Error' }, cmd.none]
+            return [{ type: 'Error', reason: 'AppError' }, cmd.none]
           }
 
-          const [sendModel, sendCmd] = Send.init({ type: '1', linkId, seed: b642arr(seed) })
+          let arrSeed
+          try {
+            arrSeed = b642arr(seed)
+          } catch {
+            return [{ type: 'Error', reason: 'LinkMalformed' }, cmd.none]
+          }
+
+          const [sendModel, sendCmd] = Send.init({ type: '1', linkId, seed: arrSeed })
 
           return [
             { type: 'Ready', screen: { type: 'Send', model: sendModel } },
@@ -163,7 +170,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'RequestMsg': {
       if (model.type != 'Ready' || model.screen.type != 'Request')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
 
       if ((
@@ -190,7 +197,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
     }
     case 'SendMsg': {
       if (model.type != 'Ready' || model.screen.type != 'Send')
-        return [{ type: 'Error' }, cmd.none]
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
       if (msg.msg.type === 'UploadFilesMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToReceive') {
         const [requestModel, requestCmd] = Request.init('0')
@@ -227,7 +234,7 @@ function view(model: Model): Html<Msg> {
     switch (model.type) {
       case 'Loading': return LoadingScreen.view()(dispatch)
       case 'Ready': return renderScreen(model)
-      case 'Error': return ErrorScreen.view('AppError')(dispatch)
+      case 'Error': return ErrorScreen.view(model.reason)(dispatch)
       case 'LinkNotFound': return ErrorScreen.view('LinkNotFound')(dispatch)
     }
   }
