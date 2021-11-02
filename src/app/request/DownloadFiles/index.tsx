@@ -40,7 +40,9 @@ if (MITM != null) {
 
 // @ts-ignore
 const toPolyfillReadable = streamAdapter.createReadableStreamWrapper(ReadableStream)
+// @ts-ignore
 const toPolyfillWritable = streamAdapter.createWritableStreamWrapper(WritableStream)
+// @ts-ignore
 const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(TransformStream)
 
 

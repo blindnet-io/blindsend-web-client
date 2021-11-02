@@ -97,22 +97,22 @@ const init: () => [Model, cmd.Cmd<Msg>] = () => {
     ]
   }
 
-  const [requestModel, requestCmd] = Request.init('0')
-
-  return [
-    { type: 'Ready', screen: { type: 'Request', model: requestModel } },
-    cmd.batch([
-      cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
-    ])
-  ]
-  // const [sendModel, sendCmd] = Send.init({ type: '0' })
+  // const [requestModel, requestCmd] = Request.init('0')
 
   // return [
-  //   { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+  //   { type: 'Ready', screen: { type: 'Request', model: requestModel } },
   //   cmd.batch([
-  //     cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+  //     cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
   //   ])
   // ]
+  const [sendModel, sendCmd] = Send.init({ type: '0' })
+
+  return [
+    { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+    cmd.batch([
+      cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+    ])
+  ]
 }
 
 function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {

@@ -39,7 +39,9 @@ if (MITM != null) {
 
 // @ts-ignore
 const toPolyfillReadable = streamAdapter.createReadableStreamWrapper(ReadableStream)
+// @ts-ignore
 const toPolyfillWritable = streamAdapter.createWritableStreamWrapper(WritableStream)
+// @ts-ignore
 const toPolyfillTransform = streamAdapter.createTransformStreamWrapper(TransformStream)
 
 type CheckPassword = { type: 'CheckPassword' }
@@ -256,7 +258,7 @@ function decrypt(
   nextFile: number
 ): cmd.Cmd<Msg> {
 
-  function decrypTransformer(stream: ReadableStream<Uint8Array>) {
+  function decryptTransformer(stream: ReadableStream<Uint8Array>) {
     const reader = stream.getReader()
     let i = 0
 
@@ -364,7 +366,7 @@ function decrypt(
     toPolyfillTransform(progressTransformer())
 
   const fileContent =
-    decrypTransformer(
+    decryptTransformer(
       mappedEncFileContent
         .pipeThrough(mappedProgressTransformer)
         .pipeThrough(mappedToFixedChunksTransformer)

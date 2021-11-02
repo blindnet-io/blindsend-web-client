@@ -126,8 +126,8 @@ function getKeys(pass: string): cmd.Cmd<Msg> {
     T.bind('passKey', () => () => crypto.subtle.importKey("raw", te.encode(pass + 'x'), "PBKDF2", false, ["deriveKey"])),
     T.bind('aesKey', ({ passKey }) => () => crypto.subtle.deriveKey({ "name": "PBKDF2", salt: salt, "iterations": 64206, "hash": "SHA-256" }, passKey, { name: "AES-GCM", length: 256 }, false, ['wrapKey'])),
     T.bind('ecdhKey', () => () => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ['deriveBits'])),
-    T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)),
-    T.bind('wrappedSk', ({ aesKey, ecdhKey }) => () => crypto.subtle.wrapKey('jwk', ecdhKey.privateKey, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) })),
+    T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey!)),
+    T.bind('wrappedSk', ({ aesKey, ecdhKey }) => () => crypto.subtle.wrapKey('jwk', ecdhKey.privateKey!, aesKey, { name: "AES-GCM", iv: new Uint8Array(new Array(12).fill(0)) })),
     T.bind('pkHash', ({ pk }) => () => crypto.subtle.digest('SHA-256', te.encode(`${pk.x}.${pk.y}`))),
     T.map(({ wrappedSk, pk, pkHash }) => ({ type: 'GeneratedKeysPass', keys: { salt, wrappedSk, pk: `${pk.x}.${pk.y}`, pkHash } }))
   )
@@ -144,9 +144,9 @@ function getKeysPasswordless() {
   const task: T.Task<Msg> = pipe(
     T.Do,
     T.bind('ecdhKey', () => () => crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ['deriveBits'])),
-    T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey)),
+    T.bind('pk', ({ ecdhKey }) => () => crypto.subtle.exportKey('jwk', ecdhKey.publicKey!)),
     T.bind('pkHash', ({ pk }) => () => crypto.subtle.digest('SHA-256', te.encode(`${pk.x}.${pk.y}`))),
-    T.map(({ ecdhKey, pk, pkHash }) => ({ type: 'GeneratedKeysPasswordless', keys: { sk: ecdhKey.privateKey, pk: `${pk.x}.${pk.y}`, pkHash } }))
+    T.map(({ ecdhKey, pk, pkHash }) => ({ type: 'GeneratedKeysPasswordless', keys: { sk: ecdhKey.privateKey!, pk: `${pk.x}.${pk.y}`, pkHash } }))
   )
 
   return pipe(
