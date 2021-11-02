@@ -37,7 +37,7 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__wrap col-lg-3">
       <div className="tooltip">
         <div className="tooltip__warning-wrap">
-          <span className="tooltip__warning">This version uses IndexedDB API. <br /> Check our &#x200B;
+          <span className="tooltip__warning">This version uses the IndexedDB API. <br /> Check our &#x200B;
             <a href="#" onClick={e => {
               e.stopPropagation()
               document.querySelector('.js-main-privacy')?.classList.add('show')

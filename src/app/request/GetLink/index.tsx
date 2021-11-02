@@ -338,7 +338,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
                     onClick={() => dispatch({ type: 'GenerateLink' })}
                     disabled={model.loading || pass.length === 0}
                   />
-                  <span className={model.loading ? "btn-animation sending" : "btn-animation"}></span>
+                  <span className={model.loading ? "btn-animation loading" : "btn-animation"}></span>
                 </div>
               </div>
               {model.canPasswordless &&

@@ -22,7 +22,7 @@ const view = (): Html<any> => _ => {
         <p className="tooltip__content-text">The file will be <b>end-to-end</b> encrypted from him to you, and only you will be able to decrypt it.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure chanel (e-mail or else). The <b>end to-end</b> encryption protects you.</p>
+        <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure channel (e-mail or else). The <b>end-to-end</b> encryption protects you.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -34,7 +34,7 @@ const view = (): Html<any> => _ => {
           <p className="tooltip__content-text">The file will be <b>end-to-end</b> encrypted from him to you, and only you will be able to decrypt it.</p>
         </div>
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure chanel (e-mail or else). The <b>end to-end</b> encryption protects you.</p>
+          <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure channel (e-mail or else). The <b>end-to-end</b> encryption protects you.</p>
         </div>
       </div>
     </div>

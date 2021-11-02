@@ -20,7 +20,7 @@ const view = (pass: string): Html<any> => _ => {
           <div className="tooltip__content">
             <div className="tooltip__slide">
               <p className="tooltip__content-text">{msg}</p>
-              {showText && <p className="tooltip__content-text">You can still proceed but anyone posessing the link will have easier time cracking your password.</p>}
+              {showText && <p className="tooltip__content-text">You can still proceed but anyone possessing the link will have an easier time cracking your password.</p>}
               {showText && <p className="tooltip__content-text">Good passwords include uppercase letters, lowercase letters, numbers and special characters.</p>}
             </div>
           </div>

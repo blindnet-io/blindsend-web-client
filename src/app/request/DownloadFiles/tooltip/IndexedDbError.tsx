@@ -16,7 +16,7 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__content-container">
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">Probably, you used different browser to generate this link.</p>
+                <p className="tooltip__content-text">Probably, you used a different browser to generate this link.</p>
                 <p className="tooltip__content-text">You must use the same browser on the same device to generate a link and later access the data.</p>
               </div>
             </div>

@@ -16,8 +16,8 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__content-container">
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">Unexpected error occured during decryption of your files.</p>
-                <p className="tooltip__content-text">Please, refresh the page.</p>
+                <p className="tooltip__content-text">Unexpected error occurred during decryption of your files.</p>
+                <p className="tooltip__content-text">Please, refresh the page and try again.</p>
               </div>
             </div>
           </div>

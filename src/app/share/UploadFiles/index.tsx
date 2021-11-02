@@ -732,11 +732,11 @@ const view = (model: Model): Html<Msg> => dispatch => {
                   type="submit"
                   className="btn"
                   style={model.status.type === 'WaitingForUpload' && !noFiles ? {} : { pointerEvents: 'none' }}
-                  value="send"
+                  value="share"
                   disabled={model.status.type !== 'WaitingForUpload' || noFiles}
                   onClick={() => dispatch({ type: 'Upload' })}
                 />
-                <span className={uploading ? "btn-animation sending" : "btn-animation"}
+                <span className={uploading ? "btn-animation loading" : "btn-animation"}
                 ></span>
               </div>
 

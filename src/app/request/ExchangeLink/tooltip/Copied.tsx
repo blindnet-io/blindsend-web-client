@@ -19,7 +19,7 @@ const view = (): Html<any> => _ => {
     >
       <SwiperSlide>
         <p className="tooltip__content-text">Provide the file sender with the link and ask them to upload the file there.</p>
-        <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure chanel (e-mail or else).</p>
+        <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure channel (e-mail or else).</p>
       </SwiperSlide>
       <SwiperSlide>
         <p className="tooltip__content-text">The <b>end-to-end</b> encryption protects you.</p>
@@ -31,7 +31,7 @@ const view = (): Html<any> => _ => {
       <div className="tooltip__content">
         <div className="tooltip__slide">
           <p className="tooltip__content-text">Provide the file sender with the link and ask them to upload the file there.</p>
-          <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure chanel (e-mail or else).</p>
+          <p className="tooltip__content-text">Feel free to share the link with the sender over a non-secure channel (e-mail or else).</p>
         </div>
         <div className="tooltip__slide">
           <p className="tooltip__content-text">The <b>end-to-end</b> encryption protects you.</p>

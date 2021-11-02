@@ -639,8 +639,6 @@ const view = (model: Model): Html<Msg> => dispatch => {
       case false: {
         switch (model.status.type) {
           case 'WaitingForUpload': {
-            const singleSize = filesize(model.constraints.singleSize)
-            const totalSize = filesize(model.constraints.totalSize)
             return HowToTooltip.view()(dispatch)
           }
           case 'Finished': return UploadedTooltip.view()(dispatch)
@@ -729,7 +727,7 @@ const view = (model: Model): Html<Msg> => dispatch => {
                   disabled={model.status.type !== 'WaitingForUpload' || noFiles}
                   onClick={() => dispatch({ type: 'Upload' })}
                 />
-                <span className={uploading ? "btn-animation sending" : "btn-animation"}
+                <span className={uploading ? "btn-animation loading" : "btn-animation"}
                 ></span>
               </div>
 

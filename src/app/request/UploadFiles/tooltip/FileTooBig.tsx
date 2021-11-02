@@ -18,7 +18,7 @@ const view = (size: string): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Come on! Our <b>{size}</b> limit is not enough for you? </p>
+        <p className="tooltip__content-text">Come on! Our <b>{size}</b> file limit is not enough for you? </p>
         <br />
         <p className="tooltip__content-text">Really?</p>
       </SwiperSlide>
@@ -28,7 +28,7 @@ const view = (size: string): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Come on! Our <b>{size}</b> limit is not enough for you? </p>
+          <p className="tooltip__content-text">Come on! Our <b>{size}</b> file limit is not enough for you? </p>
           <br />
           <p className="tooltip__content-text">Really?</p>
         </div>

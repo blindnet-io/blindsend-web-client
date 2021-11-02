@@ -16,7 +16,7 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__content-container">
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">An error occured while encrypting and uploading files.</p>
+                <p className="tooltip__content-text">An error occurred while encrypting and uploading files.</p>
                 <p className="tooltip__content-text">Please, try again.</p>
               </div>
             </div>

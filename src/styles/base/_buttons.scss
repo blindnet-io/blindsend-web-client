@@ -75,7 +75,7 @@
     display: none;
   }
 
-  &.sending {
+  &.loading {
     pointer-events: none;
     cursor: not-allowed;
     transition-delay: 0.2s;
