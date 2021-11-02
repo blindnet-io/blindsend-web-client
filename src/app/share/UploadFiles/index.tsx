@@ -125,7 +125,7 @@ function encryptAndStoreMetadata(
     T.Do,
     T.bind('encryptedMetadata', () => () => encrypt(metadataKey, new TextEncoder().encode(metadata), iv)),
     T.bind('resp', ({ encryptedMetadata }) => () =>
-      fetch(`${endpoint}/send/init-store-metadata`, {
+      fetch(`${endpoint}/share/init-store-metadata`, {
         method: 'POST',
         body: JSON.stringify({
           seed_hash: arr2b64(seedHash),

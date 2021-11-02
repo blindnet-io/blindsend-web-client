@@ -5,12 +5,12 @@ import { Html } from 'elm-ts/lib/React'
 import * as LegalLinks from '../../components/legal/LegalLinks'
 import BlindsendLogo from '../../../images/blindsend.svg'
 
-type SwitchToSend = { type: 'SwitchToSend' }
-type SwitchToReceive = { type: 'SwitchToReceive' }
+type SwitchToShare = { type: 'SwitchToShare' }
+type SwitchToRequest = { type: 'SwitchToRequest' }
 
 type Msg =
-  | SwitchToSend
-  | SwitchToReceive
+  | SwitchToShare
+  | SwitchToRequest
 
 type CurrentStep = { type: 'Upload', id: 1 } | { type: 'ExchangeLink', id: 2 } | { type: 'Download', id: 3 }
 
@@ -28,9 +28,9 @@ const init: (curStep: 1 | 2 | 3) => [Model, cmd.Cmd<Msg>] = curStep => {
 
 const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
   switch (msg.type) {
-    case 'SwitchToSend':
+    case 'SwitchToShare':
       return [model, cmd.none]
-    case 'SwitchToReceive':
+    case 'SwitchToRequest':
       return [model, cmd.none]
   }
 }
@@ -68,8 +68,8 @@ const view = (model: Model): Html<Msg> => dispatch => {
         </div>
         {(model.curStep.type === 'Upload' || model.curStep.type === 'ExchangeLink') &&
           <div className="site-tabs__wrap">
-            <div className="site-tabs site-tabs--send active" onClick={() => dispatch({ type: 'SwitchToSend' })}>send</div>
-            <div className="site-tabs site-tabs--recieve" onClick={() => dispatch({ type: 'SwitchToReceive' })}>receive</div>
+            <div className="site-tabs site-tabs--share active" onClick={() => dispatch({ type: 'SwitchToShare' })}>share</div>
+            <div className="site-tabs site-tabs--request" onClick={() => dispatch({ type: 'SwitchToRequest' })}>request</div>
           </div>
         }
         <ul id="primary-menu" className="primary-menu">

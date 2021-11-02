@@ -13,7 +13,7 @@ import * as DownloadFiles from './DownloadFiles'
 import * as ExchangeLink from './ExchangeLink'
 
 import BlindsendLogo from '../../images/blindsend.svg'
-import * as LoadingScreen from './../components/LoadingScreen'
+import * as LoadingScreen from '../components/LoadingScreen'
 import * as ErrorScreen from '../components/ErrorScreen'
 import * as MainNavigation from '../components/MainNavigation'
 import * as Footer from '../components/Footer'

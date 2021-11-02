@@ -10,17 +10,17 @@ import { b642arr } from './helpers'
 
 import { fromCodec } from './helpers'
 import * as Request from './request/Request'
-import * as Send from './send/Send'
+import * as Share from './share/Share'
 
 import * as LoadingScreen from './components/LoadingScreen'
 import * as ErrorScreen from './components/ErrorScreen'
 
 type FailBadLink = { type: 'FailBadLink' }
 type FailGetStatus = { type: 'FailGetStatus' }
-type GotStatus = { type: 'GotStatus', status: { workflow: 'ReqFile', stage: string, pk: string } | { workflow: 'SendFile' } }
+type GotStatus = { type: 'GotStatus', status: { workflow: 'ReqFile', stage: string, pk: string } | { workflow: 'ShareFile' } }
 
 type RequestMsg = { type: 'RequestMsg', msg: Request.Msg }
-type SendMsg = { type: 'SendMsg', msg: Send.Msg }
+type ShareMsg = { type: 'ShareMsg', msg: Share.Msg }
 
 type Msg =
   | FailBadLink
@@ -28,11 +28,11 @@ type Msg =
   | GotStatus
 
   | RequestMsg
-  | SendMsg
+  | ShareMsg
 
 type InitializedModel =
   | { type: 'Ready', screen: { type: 'Request', model: Request.Model } }
-  | { type: 'Ready', screen: { type: 'Send', model: Send.Model } }
+  | { type: 'Ready', screen: { type: 'Share', model: Share.Model } }
 
 type Model =
   | { type: 'Loading', linkId?: string, seed?: string }
@@ -80,7 +80,7 @@ function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
           if (resp.workflow === 'r')
             return ({ type: 'GotStatus', status: { workflow: 'ReqFile', stage: resp.stage, pk: resp.key } })
           else
-            return ({ type: 'GotStatus', status: { workflow: 'SendFile' } })
+            return ({ type: 'GotStatus', status: { workflow: 'ShareFile' } })
         })
     )
   )(req)
@@ -105,12 +105,12 @@ const init: () => [Model, cmd.Cmd<Msg>] = () => {
   //     cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
   //   ])
   // ]
-  const [sendModel, sendCmd] = Send.init({ type: '0' })
+  const [shareModel, shareCmd] = Share.init({ type: '0' })
 
   return [
-    { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+    { type: 'Ready', screen: { type: 'Share', model: shareModel } },
     cmd.batch([
-      cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+      cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
     ])
   ]
 }
@@ -144,7 +144,7 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
             ])
           ]
         }
-        case 'SendFile': {
+        case 'ShareFile': {
           const { linkId, seed } = model
           if (!linkId || !seed) {
             return [{ type: 'Error', reason: 'AppError' }, cmd.none]
@@ -157,12 +157,12 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
             return [{ type: 'Error', reason: 'LinkMalformed' }, cmd.none]
           }
 
-          const [sendModel, sendCmd] = Send.init({ type: '1', linkId, seed: arrSeed })
+          const [shareModel, shareCmd] = Share.init({ type: '1', linkId, seed: arrSeed })
 
           return [
-            { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+            { type: 'Ready', screen: { type: 'Share', model: shareModel } },
             cmd.batch([
-              cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+              cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
             ])
           ]
         }
@@ -176,14 +176,14 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
       if ((
         msg.msg.type === 'GetLinkMsg' || msg.msg.type === 'ExchangeLinkMsg')
         && msg.msg.msg.type === 'LeftPanelMsg'
-        && msg.msg.msg.msg.type === 'SwitchToSend'
+        && msg.msg.msg.msg.type === 'SwitchToShare'
       ) {
-        const [sendModel, sendCmd] = Send.init({ type: '0' })
+        const [shareModel, shareCmd] = Share.init({ type: '0' })
 
         return [
-          { type: 'Ready', screen: { type: 'Send', model: sendModel } },
+          { type: 'Ready', screen: { type: 'Share', model: shareModel } },
           cmd.batch([
-            cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+            cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
           ])
         ]
       }
@@ -195,11 +195,11 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
       ]
     }
-    case 'SendMsg': {
-      if (model.type != 'Ready' || model.screen.type != 'Send')
+    case 'ShareMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'Share')
         return [{ type: 'Error', reason: 'AppError' }, cmd.none]
 
-      if (msg.msg.type === 'UploadFilesMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToReceive') {
+      if (msg.msg.type === 'UploadFilesMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToRequest') {
         const [requestModel, requestCmd] = Request.init('0')
 
         return [
@@ -210,11 +210,11 @@ function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
         ]
       }
 
-      const [sendModel, sendCmd] = Send.update(msg.msg, model.screen.model)
+      const [shareModel, shareCmd] = Share.update(msg.msg, model.screen.model)
 
       return [
-        { ...model, screen: { ...model.screen, model: sendModel } },
-        cmd.map<Send.Msg, Msg>(msg => ({ type: 'SendMsg', msg }))(sendCmd)
+        { ...model, screen: { ...model.screen, model: shareModel } },
+        cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
       ]
     }
   }
@@ -227,7 +227,7 @@ function view(model: Model): Html<Msg> {
     function renderScreen(model: InitializedModel) {
       switch (model.screen.type) {
         case 'Request': return Request.view(model.screen.model)(msg => dispatch({ type: 'RequestMsg', msg }))
-        case 'Send': return Send.view(model.screen.model)(msg => dispatch({ type: 'SendMsg', msg }))
+        case 'Share': return Share.view(model.screen.model)(msg => dispatch({ type: 'ShareMsg', msg }))
       }
     }
 
