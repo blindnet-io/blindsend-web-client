@@ -686,12 +686,12 @@ const view = (model: Model): Html<Msg> => dispatch => {
                   }
                 }}
               >
-                <div className="main-drop__file-wrap-inner">
+                <div className="main-drop__file-wrap-inner" onClick={_ => {
+                  if (model.status.type === 'WaitingForUpload')
+                    document.getElementById('file-pick')?.click()
+                }}>
                   {noFiles &&
-                    <div className="main-drop__file-wrap-inner-wrap" onClick={_ => {
-                      if (model.status.type === 'WaitingForUpload')
-                        document.getElementById('file-pick')?.click()
-                    }}>
+                    <div className="main-drop__file-wrap-inner-wrap">
                       <span className="main-drop__file-msg">Drag & Drop your files here</span>
                       <span className="main-drop__file-icon-mob">+</span>
                       <span className="main-drop__file-msg-mob">Click here to attach files</span>
