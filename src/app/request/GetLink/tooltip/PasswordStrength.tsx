@@ -52,9 +52,9 @@ const view = (pass: string): Html<any> => _ => {
     const entropyBits = stat.trigraphEntropyBits ? stat.trigraphEntropyBits : stat.shannonEntropyBits
 
     if (entropyBits < 15)
-      return weak('VERY WEAK PASSWORD', 'It will keep out a typical attacker for minutes.', true)
+      return weak('VERY WEAK PASSWORD', 'This password will keep out a typical attacker for minutes.', true)
     else if (entropyBits < 20)
-      return weak('WEAK PASSWORD', 'It will keep out a typical attacker for hours.', false)
+      return weak('WEAK PASSWORD', 'This password will keep out a typical attacker for hours.', true)
     else if (entropyBits < 32)
       return ok('OK PASSWORD', 'Crackable by a typical home computer in a week.')
     else if (entropyBits < 64)
@@ -62,7 +62,7 @@ const view = (pass: string): Html<any> => _ => {
     else if (entropyBits < 80)
       return ok('STRONG PASSWORD', 'Resistant to a large, coordinated attack (botnet) for over a year.')
     else
-      return ok('VERY STRONG PASSWORD', 'Nearly impossible to brute force, given more than all of the computing power in the world, optimized algorithms, specialized hardware and a thousand years.')
+      return ok('VERY STRONG PASSWORD', 'Kudos ! Nearly impossible to brute force, given more than all of the computing power in the world, optimized algorithms, specialized hardware and a thousand years.')
   }
 
   return (

@@ -31,7 +31,7 @@ const view = (passNotCorrect: Boolean): Html<any> => _ => {
       <div className="tooltip__content">
         <div className="swiper-slide">
           <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password to see files.</p>
-          <p className="tooltip__content-text">The password was set by you when you created this link.</p>
+          <p className="tooltip__content-text">The password was set by you when<br />you created this link.</p>
         </div>
       </div>
       <div className="tooltip__pagination"></div>

@@ -18,11 +18,11 @@ const view = (): Html<any> => _ => {
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">To receive an <b>end-to-end</b> encrypted file, just pick a password and you’ll get a secure link.</p>
-        <p className="tooltip__content-text"><b>Send</b> the link to the file sender, and wait for them to <b>upload</b> the file.</p>
+        <p className="tooltip__content-text">To request the encrypted files from someone, pick a password and you’ll receive a <b>unique link</b>.</p>
+        <p className="tooltip__content-text"><b>Send</b> the link to the person you are requesting files from, and wait for them to upload the file.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">The file will wait for you encrypted for your eyes only.</p>
+        <p className="tooltip__content-text">The file will wait for you encrypted, for your eyes only.</p>
         <p className="tooltip__content-text">Magic. GDPR-compliant. Enjoy.</p>
       </SwiperSlide>
     </Swiper>
@@ -31,11 +31,11 @@ const view = (): Html<any> => _ => {
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">To receive an <b>end-to-end</b> encrypted file, just pick a password and you’ll get a secure link.</p>
-          <p className="tooltip__content-text"><b>Send</b> the link to the file sender, and wait for them to <b>upload</b> the file.</p>
+          <p className="tooltip__content-text">To request the encrypted files from someone, pick a password and you’ll receive a <b>unique link</b>.</p>
+          <p className="tooltip__content-text"><b>Send</b> the link to the person you are requesting files from, and wait for them to upload the file.</p>
         </div>
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">The file will wait for you encrypted for your eyes only.</p>
+          <p className="tooltip__content-text">The file will wait for you encrypted, for your eyes only.</p>
           <p className="tooltip__content-text">Magic. GDPR-compliant. Enjoy.</p>
         </div>
       </div>

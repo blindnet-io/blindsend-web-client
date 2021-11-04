@@ -1,37 +1,9 @@
 import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
-import SwiperCore, { Pagination } from 'swiper'
-import { Swiper, SwiperSlide } from 'swiper/react'
 
 import HandsEmoji from '../../../../images/hands.svg'
 
-SwiperCore.use([Pagination])
-
 const view = (): Html<any> => _ => {
-
-  const mobile =
-    <Swiper
-      watchOverflow={true}
-      slidesPerView={1}
-      spaceBetween={24}
-      pagination={{ type: 'bullets' }}
-      className="tooltip__content-container swiper-container"
-    >
-      <SwiperSlide>
-        <p className="tooltip__content-text">An encryption key will be generated for you in the background and saved in this browser.</p>
-        <p className="tooltip__content-text">You only have to share the link with the file sender and wait.</p>
-      </SwiperSlide>
-    </Swiper>
-
-  const desktop =
-    <div className="tooltip__content-container">
-      <div className="tooltip__content">
-        <div className="tooltip__slide">
-          <p className="tooltip__content-text">An encryption key will be generated for you in the background and saved in this browser.</p>
-          <p className="tooltip__content-text">You only have to share the link with the file sender and wait.</p>
-        </div>
-      </div>
-    </div>
 
   return (
     <div className="tooltip__wrap col-lg-3">
@@ -52,7 +24,14 @@ const view = (): Html<any> => _ => {
             <img src={HandsEmoji} alt="" />
           </div>
           <h2 className="tooltip__title section-title">PASSWORDLESS</h2>
-          {window.matchMedia('(max-width: 1099px)').matches ? mobile : desktop}
+          <div className="tooltip__content-container">
+            <div className="tooltip__content">
+              <div className="tooltip__slide">
+                <p className="tooltip__content-text">An encryption key will be generated for you in the background and saved in this browser.</p>
+                <p className="tooltip__content-text">You only have to share the link with the person you’re requesting the files from and wait.</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

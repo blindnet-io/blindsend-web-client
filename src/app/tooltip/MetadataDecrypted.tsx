@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 
-import ClapEmoji from '../../../../images/clap.svg'
+import AmazingEmoji from '../../images/amazing.svg'
 
 const view = (): Html<any> => _ => {
 
@@ -10,14 +10,16 @@ const view = (): Html<any> => _ => {
       <div className="tooltip">
         <div className="tooltip__inner tooltip__inner--strong">
           <div className="tooltip__img">
-            <img src={ClapEmoji} alt="" />
+            <img src={AmazingEmoji} alt="" />
           </div>
+          <h2 className="tooltip__title section-title">GREAT</h2>
           <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
             <div className="tooltip__content">
-              <div className="tooltip__slide">
-                <p className="tooltip__content-text">The files were encrypted and uploaded successfully.</p>
+              <div className="swiper-slide">
+                <p className="tooltip__content-text">Now you can download an individual file<br />or download all files at once.</p>
               </div>
             </div>
+            <div className="tooltip__pagination"></div>
           </div>
         </div>
       </div>

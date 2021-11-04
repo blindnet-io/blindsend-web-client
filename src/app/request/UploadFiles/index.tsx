@@ -15,13 +15,13 @@ import { arr2b64, concat } from '../../helpers'
 import * as LeftPanel from '../components/LeftPanel'
 import { fromCodec, uuidv4 } from '../../helpers'
 import * as HowToTooltip from './tooltip/HowTo'
-import * as FileTooBigTooltip from './tooltip/FileTooBig'
-import * as TooManyFilesTooltip from './tooltip/TooManyFiles'
-import * as TotalSizeTooBigTooltip from './tooltip/TotalSizeTooBig'
-import * as UploadingdTooltip from './tooltip/Uploading'
+import * as FileTooBigTooltip from '../../tooltip/FileTooBig'
+import * as TooManyFilesTooltip from '../../tooltip/TooManyFiles'
+import * as TotalSizeTooBigTooltip from '../../tooltip/TotalSizeTooBig'
+import * as UploadingdTooltip from '../../tooltip/Uploading'
 import * as UploadedTooltip from './tooltip/Uploaded'
-import * as FailedUploadTooltip from './tooltip/FailedUpload'
-import * as UnexpectedErrorTooltip from './tooltip/UnexpectedError'
+import * as FailedUploadTooltip from '../../tooltip/FailedUpload'
+import * as UnexpectedErrorTooltip from '../../tooltip/UnexpectedError'
 
 import * as FileRow from '../../components/FileUpload'
 
@@ -647,9 +647,9 @@ const view = (model: Model): Html<Msg> => dispatch => {
           case 'Uploading': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
         }
       }
-      case 'FileTooBig': return FileTooBigTooltip.view(filesize(model.constraints.singleSize))(dispatch)
-      case 'TooManyFiles': return TooManyFilesTooltip.view(model.constraints.numOfFiles)(dispatch)
-      case 'TotalSizeTooBig': return TotalSizeTooBigTooltip.view(filesize(model.constraints.totalSize))(dispatch)
+      case 'FileTooBig': return FileTooBigTooltip.view(filesize(model.constraints.singleSize), true)(dispatch)
+      case 'TooManyFiles': return TooManyFilesTooltip.view(model.constraints.numOfFiles, true)(dispatch)
+      case 'TotalSizeTooBig': return TotalSizeTooBigTooltip.view(filesize(model.constraints.totalSize), true)(dispatch)
       case 'UploadFailed': return FailedUploadTooltip.view()(dispatch)
       case 'Unexpected': return UnexpectedErrorTooltip.view()(dispatch)
     }

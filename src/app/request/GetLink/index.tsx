@@ -212,6 +212,9 @@ const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
       ]
     }
     case 'EstimatePass': {
+      if (model.loading)
+        return [model, cmd.none]
+
       return [
         {
           ...model,

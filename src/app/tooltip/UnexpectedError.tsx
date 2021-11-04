@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 
-import WeakEmoji from '../../../../images/weak.svg'
+import WeakEmoji from '../../images/weak.svg'
 
 const view = (): Html<any> => _ => {
 
@@ -12,12 +12,11 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__img">
             <img src={WeakEmoji} alt="" />
           </div>
-          <h2 className="tooltip__title section-title">Could not decrypt files</h2>
+          <h2 className="tooltip__title section-title">Uh-oh. An error has occurred</h2>
           <div className="tooltip__content-container">
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">Unexpected error occurred during decryption of your files.</p>
-                <p className="tooltip__content-text">Please, refresh the page and try again.</p>
+                <p className="tooltip__content-text">Please, refresh the page.</p>
               </div>
             </div>
           </div>

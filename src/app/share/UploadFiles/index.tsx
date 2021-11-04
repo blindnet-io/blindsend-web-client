@@ -16,13 +16,12 @@ import * as PasswordField from '../../components/PasswordField'
 import * as LeftPanel from '../components/LeftPanel'
 import * as FileRow from '../../components/FileUpload'
 import * as HowToTooltip from './tooltip/HowTo'
-import * as FileTooBigTooltip from './tooltip/FileTooBig'
-import * as TooManyFilesTooltip from './tooltip/TooManyFiles'
-import * as TotalSizeTooBigTooltip from './tooltip/TotalSizeTooBig'
-import * as UploadingdTooltip from './tooltip/Uploading'
-import * as UploadedTooltip from './tooltip/Uploaded'
-import * as FailedUploadTooltip from './tooltip/FailedUpload'
-import * as UnexpectedErrorTooltip from './tooltip/UnexpectedError'
+import * as FileTooBigTooltip from '../../tooltip/FileTooBig'
+import * as TooManyFilesTooltip from '../../tooltip/TooManyFiles'
+import * as TotalSizeTooBigTooltip from '../../tooltip/TotalSizeTooBig'
+import * as UploadingdTooltip from '../../tooltip/Uploading'
+import * as FailedUploadTooltip from '../../tooltip/FailedUpload'
+import * as UnexpectedErrorTooltip from '../../tooltip/UnexpectedError'
 
 type Keys = {
   metadataKey: CryptoKey,
@@ -648,9 +647,9 @@ const view = (model: Model): Html<Msg> => dispatch => {
             const totalSize = filesize(model.constraints.totalSize)
             return HowToTooltip.view(singleSize, totalSize, model.constraints.numOfFiles)(dispatch)
           }
-          case 'Finished': return UploadedTooltip.view()(dispatch)
-          case 'InitializedUpload': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
-          case 'GeneratedKeys': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
+          case 'Finished': // screen switches
+          case 'InitializedUpload':
+          case 'GeneratedKeys':
           case 'Uploading': return UploadingdTooltip.view(() => dispatch({ type: 'CancelUpload' }))(dispatch)
         }
       }

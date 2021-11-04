@@ -12,11 +12,17 @@ const view = (): Html<any> => _ => {
           <div className="tooltip__img">
             <img src={WeakEmoji} alt="" />
           </div>
-          <h2 className="tooltip__title section-title" style={{ fontSize: '24px', marginTop: '15px' }}>Seed malformed</h2>
+          <h2 className="tooltip__title section-title">Bad link</h2>
           <div className="tooltip__content-container">
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">Link was probably wrongly copied.</p>
+                <p className="tooltip__content-text">
+                  Seed (part of the link after #)<br />
+                  could not be decoded.<br />
+                </p>
+                <p className="tooltip__content-text">
+                  Chances are the link was wrongly copied.
+                </p>
               </div>
             </div>
           </div>

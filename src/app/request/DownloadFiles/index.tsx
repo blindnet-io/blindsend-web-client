@@ -16,11 +16,11 @@ import * as FileRow from '../../components/FileDownload'
 
 import { fromCodec, concat, equal, b642arr } from '../../helpers'
 import * as FilesReadyTooltip from './tooltip/FilesReady'
-import * as VerifyingPasswordTooltip from './tooltip/VerifyingPassword'
-import * as MetadataDecryptedTooltip from './tooltip/MetadataDecrypted'
-import * as DecryptingFilesTooltip from './tooltip/Downloading'
+import * as VerifyingPasswordTooltip from '../../tooltip/VerifyingPassword'
+import * as MetadataDecryptedTooltip from '../../tooltip/MetadataDecrypted'
+import * as DecryptingFilesTooltip from '../../tooltip/Downloading'
 import * as IndexedDbErrorTooltip from './tooltip/IndexedDbError'
-import * as DecryptionFailedTooltip from './tooltip/DecryptionFailed'
+import * as DecryptionFailedTooltip from '../../tooltip/DecryptionFailed'
 
 import {
   ReadableStream,

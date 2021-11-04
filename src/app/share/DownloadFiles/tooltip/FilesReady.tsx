@@ -19,7 +19,10 @@ const view = (passNotCorrect: Boolean): Html<any> => _ => {
       style={{ marginTop: '10px' }}
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password set by the sender to see files.</p>
+        <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password to decrypt and view files.</p>
+      </SwiperSlide>
+      <SwiperSlide>
+        <p className="tooltip__content-text">Don’t have the password? Ask the person who sent you the link - they created it.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -27,7 +30,8 @@ const view = (passNotCorrect: Boolean): Html<any> => _ => {
     <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
       <div className="tooltip__content">
         <div className="swiper-slide">
-          <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password set by the sender to see files.</p>
+          <p className="tooltip__content-text">Enter {passNotCorrect && 'the correct '}password to decrypt and view files.</p>
+          <p className="tooltip__content-text">Don’t have the password?<br />Ask the person who sent you the link<br />- they created it.</p>
         </div>
       </div>
       <div className="tooltip__pagination"></div>

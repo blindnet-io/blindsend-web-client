@@ -22,16 +22,16 @@ const view = (
       className="tooltip__content-container swiper-container"
     >
       <SwiperSlide>
-        <p className="tooltip__content-text">Drop your files here and protect them with a password. When you are ready, click <b>SHARE</b>.</p>
+        <p className="tooltip__content-text">Drop your files here and protect them with a password</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">You can share up to <b>{numOfFilesLimit}</b> files.<br />Individual file size limit is <b>{fileSizeLimit}</b> and total limit is <b>{totalSizeLimit}</b>.</p>
+        <p className="tooltip__content-text">The files will be uploaded and you will receive a unique link which you can share with anyone.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">Your files will be encrypted on your machine using a key derived from password.</p>
+        <p className="tooltip__content-text">Only those who have the password will be able to decrypt the files.</p>
       </SwiperSlide>
       <SwiperSlide>
-        <p className="tooltip__content-text">Only the ones who know the password will be able to decrypt the files.</p>
+        <p className="tooltip__content-text">You can share up to 10 files at a time. Individual file limit is 2GB and the total limit is 4GB.</p>
       </SwiperSlide>
     </Swiper>
 
@@ -39,10 +39,10 @@ const view = (
     <div className="tooltip__content-container">
       <div className="tooltip__content">
         <div className="tooltip__slide">
-          <p className="tooltip__content-text">Drop your files here and protect them with a password. When you are ready, click <b>SHARE</b>.</p>
-          <p className="tooltip__content-text">You can share up to <b>{numOfFilesLimit}</b> files.<br />Individual file size limit is <b>{fileSizeLimit}</b> and total limit is <b>{totalSizeLimit}</b>.</p>
-          <p className="tooltip__content-text">Your files will be encrypted in the browser using a key derived from password.</p>
-          <p className="tooltip__content-text">Only the ones who know the password will be able to decrypt the files.</p>
+          <p className="tooltip__content-text">Drop your files here and<br />protect them with a password.</p>
+          <p className="tooltip__content-text">The files will be uploaded and<br />you will receive a unique link<br /> which you can share with anyone.</p>
+          <p className="tooltip__content-text">Only those who have the password<br /> will be able to decrypt the files.</p>
+          <p className="tooltip__content-text">You can share up to 10 files at a time.<br /> Individual file limit is 2GB.<br /> Total limit is 4GB.</p>
         </div>
       </div>
     </div>
@@ -54,7 +54,7 @@ const view = (
           <div className="tooltip__img">
             <img src={MailIcon} alt="" />
           </div>
-          <h2 className="tooltip__title section-title">Encrypt and share files</h2>
+          <h2 className="tooltip__title section-title">HOW TO</h2>
           {window.matchMedia('(max-width: 1099px)').matches ? mobile : desktop}
         </div>
       </div>

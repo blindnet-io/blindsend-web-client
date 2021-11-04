@@ -16,11 +16,11 @@ const view = (): Html<any> => _ => {
             secondaryColor="rgba(57, 172, 124, 0.78)"
             style={{ marginBottom: '20px' }}
           />
-          <h2 className="tooltip__title section-title">Decrypting files</h2>
+          <h2 className="tooltip__title section-title">Downloading and decrypting</h2>
           <div className="tooltip__content-container" style={{ marginTop: '20px' }}>
             <div className="tooltip__content">
               <div className="tooltip__slide">
-                <p className="tooltip__content-text">Please don't close the tab until the download is finished.</p>
+                <p className="tooltip__content-text">Please don't close the tab until the files are decrypted.</p>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Html } from 'elm-ts/lib/React'
 
-import WeakEmoji from '../../../../images/weak.svg'
+import WeakEmoji from '../../images/weak.svg'
 
 const view = (): Html<any> => _ => {
 
