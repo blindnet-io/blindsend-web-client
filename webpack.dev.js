@@ -14,12 +14,16 @@ module.exports = merge(common, {
     filename: "[name].bundle.js",
     path: path.join(__dirname, '/dist'),
   },
-  devtool: 'cheap-eval-source-map',
+  devtool: 'source-map',
   module: {
     rules: [
       {
         test: /\.scss$/,
         use: ["style-loader", "css-loader", "sass-loader"]
+      },
+      {
+        test: /\.(woff|woff2|eot|ttf|otf)$/i,
+        type: 'asset/resource',
       }
     ]
   },
@@ -31,11 +35,19 @@ module.exports = merge(common, {
     new HtmlWebpackPlugin({
       template: './src/html/template.ejs',
       base: '/',
-      sodiumInject: ''
+      zipInject: '<script src="js/zip-stream.js"></script>'
+    }),
+    new CopyPlugin({
+      patterns: [
+        { from: './src/images/favicon.png', to: 'images/favicon.png' },
+        { from: './src/libs/zip-stream.js', to: 'js/zip-stream.js' },
+        // { from: './src/libs/mitm', to: 'mitm' },
+      ],
     }),
     new webpack.DefinePlugin({
       HOST: JSON.stringify('http://0.0.0.0:9000'),
-      MITM: null
+      MITM: null,
+      VERSION: JSON.stringify(require("./package.json").version)
     })
   ]
 });

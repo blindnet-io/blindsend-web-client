@@ -1,39 +1,72 @@
 # Blindsend web UI
 
-This project is a web client for [blindsend](https://github.com/blindnet-io/blindsend), an open source tool for private, end-to-end encrypted file exchange between two parties.
-
-Blindsend web client provides a web UI that uses blindsend [server (API)](https://github.com/blindnet-io/blindsend-be) for private file exchange. It also performs local encryption and decryption of the exchanged files, so that all files exchanged via blindsend are always encrypted and decrypted only on Sender's/Receiver's local machines. Web UI has been tested on Chrome, Chromium, and Firefox (all desktop).
-
-Blindsend web UI is intended to be used together with [blindsend server](https://github.com/blindnet-io/blindsend-be). A demo is avalable [here](https://blindsend.xyz).
-
-## Installation instructions
-
-Before building blindsend web UI, you need to have [npm](https://www.npmjs.com/get-npm) installed.
-
-To build blindsend web UI, run the following command in the project root
-```bash
-npm run build
-```
-
-If you are using a server instance without the https connection, build the web UI by running the command below. In this case however, you should never use that instance for purposes other than testing. 
-```bash
-npm run build-local
-```
-
-This will create a `dist` folder in project's root. To integrate blindsend web UI with the server, [install blindsend server](https://github.com/blindnet-io/blindsend-be) and put the `dist` folder in the same location as your `blindsend.jar` before running the server.
+This project is a web client for [blindsend](https://github.com/blindnet-io/blindsend), an open source tool for private, end-to-end encrypted file exchange.
 
 ## Design
 
-When uploading a file, the file is split into chunks of size `uploadChunkSize` (default 4MB) found in `globals.ts` file. So byte arrays of 4MB are loaded into the memory, encrypted and sent to the server.  
-When js `fetch` api implementations start supporting `ReadableStream<Uint8Array>` request bodies, one request will be enough to transfer the file.
+Web client communicates with the [server](https://github.com/blindnet-io/blindsend-server) through REST API. It executes encryption and handles uploading and downloading of the files from the [Cloud Storage](https://cloud.google.com/storage).
 
-When downloading a file, the entire file is downloaded in a single request. Body of a response of the `fetch` api has type `ReadableStream<Uint8Array>` so the file bytes can be decrypted (transformed with `TransformStream`) before the entire file arrives. As soon as a tiny part (`encryptionChunkSize` in `globals.ts`) of file is decrypted, it is streamed to disk with a help from [StreamSaver](https://github.com/jimmywarting/StreamSaver.js) library. At no point is the whole file kept in memory, just the part currently being decrypted.
+To access the [Cloud Storage](https://cloud.google.com/storage), the web client must obtain [signed GCP links](https://cloud.google.com/storage/docs/access-control/signed-urls) from the [server](https://github.com/blindnet-io/blindsend-server). The signed links are used when a third party needs to access a resource on the GCP.
 
-## Dependencies
+To keep sensitive information away from the blindsend servers, links use the [URL fragments](https://en.wikipedia.org/wiki/URI_fragment). They are the parts of the URL after the # symbol which are not sent to the server when the URL is opened in the browser.
 
-Web UI implementation is written in [TypeScript](https://www.typescriptlang.org/) and [React](https://reactjs.org/).  
-App architecture is [Elm](https://guide.elm-lang.org/architecture/) like with [elm-ts](https://github.com/gcanti/elm-ts) library as the backbone.  
-For cryptography, [JavaScript + WebAssembly libsodium port](https://github.com/jedisct1/libsodium.js/) is used.  
+When uploading a file, the file is split into chunks of 4MB. 4MB chunks are loaded into the memory, encrypted and uploaded to the [Cloud Storage](https://cloud.google.com/storage).
+
+When [js fetch api](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) implementations start supporting [ReadableStream<Uint8Array> request bodies](https://github.com/whatwg/fetch/pull/425), one request will be enough to transfer the file.
+
+When downloading a file, the entire file is downloaded in a single request. Body of a response of the fetch api has type `ReadableStream<Uint8Array>` so the file bytes can be decrypted (transformed with `TransformStream`) before the entire file arrives.  
+As soon as a 4MB chunk is downloaded, it is decrypted and streamed to disk with a help from [StreamSaver](https://github.com/jimmywarting/StreamSaver.js) library. At no point is the whole file kept in memory, just the part currently being decrypted. 
+
+Web client is written in [TypeScript](https://www.typescriptlang.org/) and [React](https://reactjs.org/).
+[Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) is used for encryption.
+
+### Dependencies
+
+- App architecture is [Elm](https://guide.elm-lang.org/architecture/) like with [elm-ts](https://github.com/gcanti/elm-ts) library as the backbone.  
+- [streamsaver.js](https://github.com/jimmywarting/StreamSaver.js) to handle saving large files as streams.  
+- [filesize.js](https://github.com/avoidwork/filesize.js) to display file sizes.  
+- [Idb-keyval](https://github.com/jakearchibald/idb-keyval) to store the keys in the [browser storage](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) in case of passwordless file request.  
+- [tai-password-strength](https://github.com/tests-always-included/password-strength) to calculate the relative strength of a password.  
+- Various UI elements are handled with [swiper](https://github.com/nolimits4web/swiper) and [spinners-react](https://github.com/adexin/spinners-react).  
+- [web-streams-adapter](https://github.com/MattiasBuelens/web-streams-adapter) and [web-streams-polyfill](https://github.com/MattiasBuelens/web-streams-polyfill) to make streams work in different browsers.
+
+## Browser support
+
+Web client is tested in different browsers using [BrowserStack](https://www.browserstack.com/).
+
+On desktop operating systems, It works with all major browsers.  
+On iOS, it works with Safari. For other iOS browsers, download doesn’t work.  
+On Android, it works with Chrome and Firefox.  
+
+## Deployment
+
+Install [npm](https://www.npmjs.com/) and [yarn](https://yarnpkg.com/).
+
+In the root directory of the project, run
+```sh
+yarn
+```
+to install dependencies and then
+```sh
+yarn build
+```
+to build the project.
+
+Web client files will be in the _dist_ folder in the root directory.
+
+If the [server](https://github.com/blindnet-io/blindsend-server) is on a different domain, change the value of the `HOST` variable in the `webpack.prod.js` file to the server endpoint (default value is `null`, if the server and client are using the same domain).
+
+```js
+new webpack.DefinePlugin({
+  HOST: 'https://server-endpoint.com',
+  ...
+)}
+```
 
 ## Current status
-This project has been started by [blindnet.io](https://blindnet.io/) and is currently under development.  
+
+blindsend is under development by a team of software engineers at [blindnet.io](https://blindnet.io) and several independent cryptography experts.
+
+## License
+
+See [blindsend](https://github.com/blindnet-io/blindsend).

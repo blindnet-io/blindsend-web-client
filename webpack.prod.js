@@ -3,11 +3,9 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const TerserJSPlugin = require('terser-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
-const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const webpack = require('webpack');
 const CopyPlugin = require('copy-webpack-plugin');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-const InlineSourcePlugin = require('html-webpack-inline-source-plugin');
 
 const { merge } = require("webpack-merge");
 const common = require("./webpack.common");
@@ -18,12 +16,10 @@ module.exports = merge(common, {
     main: './src/app/index.tsx'
   },
   output: {
-    filename: 'js/[name].[contentHash].bundle.js',
+    filename: 'js/[name].[contenthash].bundle.js',
     path: path.join(__dirname, '/dist')
   },
-  externals: {
-    'libsodium-wrappers': 'sodium'
-  },
+  performance: { hints: false },
   optimization: {
     minimize: true,
     minimizer: [
@@ -55,33 +51,36 @@ module.exports = merge(common, {
           "css-loader",
           "sass-loader"
         ]
+      },
+      {
+        test: /\.(woff|woff2|eot|ttf|otf)$/i,
+        type: 'asset/resource',
       }
     ]
   },
   plugins: [
-    new CleanWebpackPlugin(),
     // new BundleAnalyzerPlugin(),
     new MiniCssExtractPlugin({
-      filename: 'css/index.[contentHash].css'
+      filename: 'css/index.[contenthash].css'
     }),
     new HtmlWebpackPlugin({
       template: './src/html/template.ejs',
       filename: 'index.html',
       base: '/',
       inlineSource: 'runtime~.+\\.js',
-      sodiumInject: '<script src="js/sodium.js"></script>'
-    }),
-    new InlineSourcePlugin(HtmlWebpackPlugin),
-    new webpack.DefinePlugin({
-      HOST: null,
-      MITM: JSON.stringify('mitm/mitm.html')
+      zipInject: '<script src="js/zip-stream.js"></script>'
     }),
     new CopyPlugin({
       patterns: [
-        { from: './src/images/favicon.ico', to: 'images/favicon.ico' },
-        { from: './src/libs/sodium', to: 'js/sodium.js' },
-        { from: './src/libs/mitm', to: 'mitm' },
+        { from: './src/images/favicon.png', to: 'images/favicon.png' },
+        { from: './src/libs/zip-stream.js', to: 'js/zip-stream.js' },
+        { from: './src/libs/stream-saver_mitm', to: 'mitm' },
       ],
+    }),
+    new webpack.DefinePlugin({
+      HOST: null,
+      MITM: JSON.stringify('mitm/mitm.html'),
+      VERSION: JSON.stringify(require("./package.json").version)
     }),
   ]
 });

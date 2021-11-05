@@ -1,305 +1,39 @@
-*{ 
-	font-family: 'Roboto', sans-serif;
-}
-.holder{
-	background-image: url(../images/holder-ng.png);
-	background-position: center;
-	background-repeat: no-repeat;
-	background-size: cover;
-	width:100%;
-	height:100vh;
-	padding:70px 0px;
-}
-.get-file-wrap {
-	width: 53%;
-	background-color: #fff;
-	margin: 40px auto;
-	padding: 50px 0px;
-	box-shadow: 0px 0px 20px 10px #ecf0f4;
-	border-radius: 20px;
-}
-.download-wrap{
-	width:55%;
-	background-color: #fff;
-	margin: 40px auto;
-	padding:50px 0px;
-	box-shadow: 0px 0px 20px 10px #ecf0f4;
-	border-radius: 20px;
-}
-.upload-wrap{
-	width:55%;
-	background-color: #fff;
-	margin: 40px auto;
-	padding:50px 0px;
-	box-shadow: 0px 0px 20px 10px #ecf0f4;
-	border-radius: 20px;
-	border: 3px dashed #fff;
-	background: linear-gradient(#fff,#fff) padding-box , linear-gradient(to right, #34a5d7, #9175b4) border-box;
-}
-.upload-btn-wrap{
-	width:40%;
-	margin: -50px auto;
-	padding: 50px 0px;
-}
-.get-file-wrap p{
-	font-family: 'Roboto', sans-serif;
-	font-weight: 400;
-	font-size:18px;
-	color:#2c2c2c;
-	margin-bottom: 50px;
-}
-.Link-generated p{
-	font-family: 'Roboto', sans-serif;
-	font-weight: 400;
-	font-size:18px;
-	color:#2c2c2c;
-	margin-bottom: 15px;
-}
-.link a{
-	font-family: 'Roboto', sans-serif;
-	font-weight: 400;
-	font-size:18px;
-	color:#37a3d5;
-	text-decoration: underline;
-}
-.form-control {
-	height: auto !important;
-}
-.bs-form .form-control::-webkit-input-placeholder {
-  color: #2c2c2c;
-  opacity: 1;
-}
+/*--------------------------------------------------------------
+# Base
+--------------------------------------------------------------*/
+@import 'normalize.css/normalize';
+@import './base/fonts';
+@import './base/variables';
+@import './base/icon-font';
+@import './base/mixins';
+@import './base/animations';
+@import './base/base';
+@import './base/typography';
+@import './base/buttons';
+@import './components/site-header';
+@import './base/menu';
 
-.bs-form .form-control::-moz-placeholder {
-  color: #2c2c2c;
-  opacity: 1;
-}
+/*--------------------------------------------------------------
+# Plugins
+--------------------------------------------------------------*/
+@import 'swiper/swiper-bundle.min';
 
-.bs-form .form-control::-ms-input-placeholder {
-  color: #2c2c2c;
-  opacity: 1;
-}
+/*--------------------------------------------------------------
+# Bootstrap
+--------------------------------------------------------------*/
+@import './bootstrap/bootstrap-grid';
 
-.bs-form .form-control::placeholder {
-  color: #2c2c2c;
-  opacity: 1;
-}
-.bs-form .form-control{
-	font-family: 'Roboto', sans-serif;
-	font-weight: 400;
-	font-size:18px;
-	color:#2c2c2c;
-	padding:15px 15px;
-	background-color: #edf5fd;
-	border: 1px solid #edf5fd;
-	border-radius: 50px;
-	position: relative;
-	z-index: 999;
-}
-.bs-form .form-control.text{
-	text-align: center;
-}
-.bs-form .form-control.bs-btn, .bs-form .form-control.bs-btn:active{
-	color: #fff;
-	font-family: 'Montserrat', sans-serif;
-	font-weight: 700;
-	font-size:21px;
-	background-image: linear-gradient(to right, #34a5d7, #9175b4);
-	-webkit-background-image: linear-gradient(to right, #34a5d7, #9175b4);
-	text-transform: uppercase;
-	display: block;
-}
-.bs-form .form-control.bs-btn:hover{
-	color: #212529;
-}
-.bs-form .form-control.bs-btn:disabled{
-	color: #fff;
-}
-
-.bs-form .form-control.bs-btn-reverse, .bs-form .form-control.bs-btn-reverse:active{
-	color: #fff;
-	font-family: 'Montserrat', sans-serif;
-	font-weight: 700;
-	font-size:21px;
-	background-image: linear-gradient(to left, #34a5d7, #9175b4);
-	-webkit-background-image: linear-gradient(to left, #34a5d7, #9175b4);
-	text-transform: uppercase;
-}
-.bs-form .form-control.bs-btn-reverse:hover{
-	color: #212529;
-}
-.bs-form .form-control.bs-btn-reverse:disabled{
-	color: #fff;
-}
-
-.file-icon{
-	margin-bottom: 50px;
-}
-
-.form-group.uploadfield{
-	position: relative;
-}
-.form-group.uploadfield input{
-	position: absolute;
-	z-index: 999;
-	opacity: 0;
-}
-.form-group.uploadfield label{
-	position: relative;
-	top:0;
-	left:0;
-	right:0;
-	bottom: 0;
-	color: #fff;
-	font-family: 'Montserrat', sans-serif;
-	font-weight: 700;
-	font-size:21px;
-	background-image: linear-gradient(to right, #34a5d7, #9175b4);
-	-webkit-background-image: linear-gradient(to right, #34a5d7, #9175b4);
-	text-transform: uppercase;
-	border-radius: 50px;
-	display: block;
-	padding:15px;
-	z-index: 9;
-	opacity: 1;
-	cursor: pointer;
-}
-.form-group.uploadfield-disabled{
-	position: relative;
-}
-.form-group.uploadfield-disabled input{
-	position: absolute;
-	z-index: 999;
-	opacity: 0;
-}
-.form-group.uploadfield-disabled label{
-	position: relative;
-	top:0;
-	left:0;
-	right:0;
-	bottom: 0;
-	color: #ccc;
-	font-family: 'Montserrat', sans-serif;
-	font-weight: 700;
-	font-size:21px;
-	background-image: linear-gradient(to right, #34a5d7, #9175b4);
-	-webkit-background-image: linear-gradient(to right, #34a5d7, #9175b4);
-	text-transform: uppercase;
-	border-radius: 50px;
-	display: block;
-	padding:15px;
-	z-index: 9;
-	opacity: 1;
-	cursor: auto;
-}
-
-
-@media screen and (max-width: 1023px) {
-	.bs-form .form-control.btn{
-		font-size: 18px;
-	}
-	.holder p{
-		font-size:18px
-	}
-	.link a {
-		font-size: 15px;
-	}
-	.form-group.uploadfield label {
-		
-		font-size: 18px;
-	}
-	.form-group.uploadfield-disabled label {
-		
-		font-size: 18px;
-	}
-	.get-file-wrap {
-		width: 70%;
-		padding: 50px 25px;
-	}
-	.upload-wrap {
-		width: 70%;
-		padding: 50px 25px;
-	}
-	.upload-btn-wrap {
-		width: 50%;
-		padding: 50px 25px;
-	}
-	.download-wrap {
-		width: 70%;
-		padding: 50px 20px;
-	}
-}
-
-@media screen and (max-width: 767px) {
-	header .header-logo {
-	    text-align: center;
-	}
-	.header-logo {
-		width: 200px;
-		text-align: center;
-		margin: auto;
-	}
-	.get-file-wrap {
-		width: 95%;
-		margin: 40px auto;
-		padding: 30px 10px;
-		box-shadow: 0px 0px 20px 10px #ecf0f4;
-		border-radius: 20px;
-	}
-	.download-wrap {
-		width: 95%;
-		margin: 40px auto;
-		padding: 30px 10px;
-		box-shadow: 0px 0px 20px 10px #ecf0f4;
-		border-radius: 20px;
-	}
-	.upload-wrap {
-		width: 95%;
-		background-color: #fff;
-		margin: 40px auto;
-		padding: 30px 10px;
-	}
-	.upload-btn-wrap {
-		width: 95%;
-		margin: -20px auto;
-		padding: 30px 10px;
-	}
-	.bs-form .form-control {
-		font-size: 15px;
-		padding: 15px 15px;
-	}
-	.holder {
-		padding: 30px 0px;
-	}
-	.bs-form .form-control.btn{
-		font-size: 15px;
-	}
-	.holder p{
-		font-size:15px
-	}
-	.link a {
-		font-size: 15px;
-	}
-	.form-group.uploadfield label {
-		
-		font-size: 15px;
-	}
-	.form-group.uploadfield-disabled label {
-		
-		font-size: 15px;
-	}
-	
-}
-
-.form-control.text.pass-text::placeholder {
-	color: grey;
-}
-
-@import "~bootstrap/scss/bootstrap";
-
-// smaller css
-// @import "~bootstrap/scss/bootstrap-reboot";
-// @import "~bootstrap/scss/spinners";
-// @import "~bootstrap/scss/grid";
-// @import "~bootstrap/scss/bootstrap-grid";
-// @import "~bootstrap/scss/buttons";
+/*--------------------------------------------------------------
+# Components
+--------------------------------------------------------------*/
+@import './components/site-tabs';
+@import './components/navigation';
+@import './components/site-footer';
+@import './components/site-main';
+@import './components/tooltip';
+@import './components/main-password';
+@import './components/main-exchange';
+@import './components/main-drop';
+@import './components/main-download';
+@import './components/main-privacy';
+@import './components/main-login';

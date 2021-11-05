@@ -1,0 +1,117 @@
+@font-face {
+	font-family: "fonticons";
+	src: url('../icons/fonticons.woff2?v=') format('woff2'), url('../icons/fonticons.woff?v=') format('woff'), url('../icons/fonticons.ttf?v=') format('truetype');
+}
+
+@mixin font-styles {
+	font-family: "fonticons";
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	font-style: normal;
+	font-variant: normal;
+	font-weight: normal;
+	// speak: none; // only necessary if not using the private unicode range (firstGlyph option)
+	text-decoration: none;
+	text-transform: none;
+}
+
+%font {
+	@include font-styles;
+}
+
+@function font-char($filename) {
+	$char: "";
+
+	@if $filename == arrow-next-sm {
+		$char: "\E001";
+	}
+	@if $filename == arrow-next {
+		$char: "\E002";
+	}
+	@if $filename == arrow {
+		$char: "\E003";
+	}
+	@if $filename == cross {
+		$char: "\E004";
+	}
+	@if $filename == download {
+		$char: "\E005";
+	}
+	@if $filename == error {
+		$char: "\E006";
+	}
+	@if $filename == file {
+		$char: "\E007";
+	}
+	@if $filename == info {
+		$char: "\E008";
+	}
+	@if $filename == password-hide {
+		$char: "\E009";
+	}
+	@if $filename == password-show {
+		$char: "\E00A";
+	}
+	@if $filename == tick-new {
+		$char: "\E00B";
+	}
+	@if $filename == tick {
+		$char: "\E00C";
+	}
+	@if $filename == warning {
+		$char: "\E00D";
+	}
+
+	@return $char;
+}
+
+@mixin font($filename, $insert: before, $extend: true) {
+	&:#{$insert} {
+		@if $extend {
+			@extend %font;
+		} @else {
+			@include font-styles;
+		}
+		content: font-char($filename);
+	}
+}
+
+.font-arrow-next-sm {
+	@include font(arrow-next-sm);
+}
+.font-arrow-next {
+	@include font(arrow-next);
+}
+.font-arrow {
+	@include font(arrow);
+}
+.font-cross {
+	@include font(cross);
+}
+.font-download {
+	@include font(download);
+}
+.font-error {
+	@include font(error);
+}
+.font-file {
+	@include font(file);
+}
+.font-info {
+	@include font(info);
+}
+.font-password-hide {
+	@include font(password-hide);
+}
+.font-password-show {
+	@include font(password-show);
+}
+.font-tick-new {
+	@include font(tick-new);
+}
+.font-tick {
+	@include font(tick);
+}
+.font-warning {
+	@include font(warning);
+}

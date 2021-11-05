@@ -1,0 +1,88 @@
+@mixin mq($value, $constraint: max, $feature: width) {
+  @media screen and (#{$constraint}-#{$feature}: $value + px) {
+    @content;
+  }
+}
+
+@mixin center($direction: xy, $position: absolute) {
+  position: $position;
+  @if ($direction == 'y') {
+    top: 50%;
+    transform: translateY(-50%);
+  } @else if ($direction == 'x') {
+    left: 50%;
+    transform: translateX(-50%);
+  } @else {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@mixin clearfix {
+  &::after {
+    content: '';
+    display: table;
+    clear: both;
+  }
+}
+
+@mixin pseudo($display: block, $pos: absolute, $content: '') {
+  content: $content;
+  display: $display;
+  position: $pos;
+}
+
+@mixin triangle(
+  $color,
+  $direction,
+  $size: 6px,
+  $position: absolute,
+  $round: false
+) {
+  @include pseudo($pos: $position);
+  width: 0;
+  height: 0;
+  @if $round {
+    border-radius: 3px;
+  }
+  @if $direction == down {
+    border-left: $size solid transparent;
+    border-right: $size solid transparent;
+    border-top: $size solid $color;
+    margin-top: 0 - round($size / 2.5);
+  } @else if $direction == up {
+    border-left: $size solid transparent;
+    border-right: $size solid transparent;
+    border-bottom: $size solid $color;
+    margin-bottom: 0 - round($size / 2.5);
+  } @else if $direction == right {
+    border-top: $size solid transparent;
+    border-bottom: $size solid transparent;
+    border-left: $size solid $color;
+    margin-right: -$size;
+  } @else if $direction == left {
+    border-top: $size solid transparent;
+    border-bottom: $size solid transparent;
+    border-right: $size solid $color;
+    margin-left: -$size;
+  }
+}
+
+
+// Hover mixin only for desktop devices
+// to include use @include hover {your hover styles} can also include elements
+@mixin hover {
+	@media only screen and (min-width: 768px) {
+		&:hover {
+			@content;
+		}
+	}
+}
+
+// @mixin font($size: 16px, $colour: #000, $weight: normal, $lh: 120%) {
+//   font-size: $size;
+//   color: $colour;
+//   font-weight: $weight;
+//   line-height: $lh;
+// }

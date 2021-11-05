@@ -1,0 +1,117 @@
+.main-download__files-wrap {
+  max-height: 500px;
+  margin: 20px 0 32px;
+  scrollbar-width: thin;
+  scrollbar-color: #90a4ae transparent;
+  overflow: auto;
+  scroll-behavior: smooth;
+  border: 5px solid transparent;
+  border-left: none;
+  scroll-padding: 50px 50px 50px 50px;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+
+    @include mq($sm) {
+      width: 6px;
+    }
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #90a4ae;
+  }
+
+  @include mq($lg) {
+    max-height: 500px;
+  }
+
+  @include mq($sm) {
+    max-height: 214px;
+  }
+}
+
+.main-download__files {
+  display: flex;
+  border-bottom: 1px solid $light-grey;
+  padding: 24px;
+  align-items: center;
+
+  @include mq($lg) {
+    padding: 20px;
+  }
+
+  @include mq($sm) {
+    padding: 16px 12px 16px 0;
+  }
+}
+
+.main-download__file-name {
+  margin-right: 15px;
+}
+
+.main-download__file {
+  margin-left: auto;
+  cursor: pointer;
+
+  svg {
+    @include mq($sm) {
+      width: 18px;
+    }
+  }
+
+  path {
+    transition: $dur $ease;
+  }
+
+  @include hover {
+    path {
+      stroke: $dark-green;
+    }
+  }
+}
+
+.main-download__file-disabled {
+  margin-left: auto;
+
+  svg {
+    @include mq($sm) {
+      width: 18px;
+    }
+  }
+
+  path {
+    transition: $dur $ease;
+  }
+}
+
+.main-download__files-icon {
+  margin-right: 15px;
+}
+
+.main-download__submit span {
+  position: relative;
+  z-index: 1;
+}
+
+.main-download__btn-wrap {
+  border-radius: 8px;
+  transition: $dur $ease;
+
+  &.main-download-disabled {
+    background-image: none;
+    background: rgba(61, 65, 69, 1);
+    border: 2px solid rgb(95, 103, 111);
+    pointer-events: none;
+
+    .btn {
+      background: rgba(61, 65, 69, 1);
+      overflow: unset;
+      width: 99.3%;
+      pointer-events: none;
+    }
+  }
+}

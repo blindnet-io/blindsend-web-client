@@ -1,143 +1,244 @@
-import * as React from 'react'
-
-import { cmd, } from 'elm-ts'
-import { Html } from 'elm-ts/lib/React'
-import * as SendFile from './send-file/SendFile'
-import * as RequestFile from './request-file/RequestFile'
+import * as t from 'io-ts'
 import { pipe } from 'fp-ts/lib/function'
-import * as Opt from 'fp-ts/lib/Option'
-// @ts-ignore
-import logo from '../images/header-logo.png'
+import * as E from 'fp-ts/lib/Either'
+import { cmd, http } from 'elm-ts'
+import { Html } from 'elm-ts/lib/React'
 
-type SendFileMsg = { type: 'SendFileMsg', msg: SendFile.Msg }
-type RequestFileMsg = { type: 'RequestFileMsg', msg: RequestFile.Msg }
+import { endpoint } from './globals'
+
+import { b642arr } from './helpers'
+
+import { fromCodec } from './helpers'
+import * as Request from './request/Request'
+import * as Share from './share/Share'
+
+import * as LoadingScreen from './components/LoadingScreen'
+import * as ErrorScreen from './components/ErrorScreen'
+
+type FailBadLink = { type: 'FailBadLink' }
+type FailGetStatus = { type: 'FailGetStatus' }
+type GotStatus = { type: 'GotStatus', status: { workflow: 'ReqFile', stage: string, pk: string } | { workflow: 'ShareFile' } }
+
+type RequestMsg = { type: 'RequestMsg', msg: Request.Msg }
+type ShareMsg = { type: 'ShareMsg', msg: Share.Msg }
 
 type Msg =
-  | SendFileMsg
-  | RequestFileMsg
+  | FailBadLink
+  | FailGetStatus
+  | GotStatus
 
-type SendFileModel = { type: 'SendFile', model: SendFile.Model }
-type RequestFileModel = { type: 'RequestFile', model: RequestFile.Model }
+  | RequestMsg
+  | ShareMsg
 
-type Router =
-  | { route: 'send', model: SendFileModel }
-  | { route: 'request', model: RequestFileModel }
-
-type PageError = { type: 'PageError', error: Opt.Option<string> }
-type Initializing = { type: 'Initializing' }
-type Initialized = { type: 'Initialized', router: Router }
+type InitializedModel =
+  | { type: 'Ready', screen: { type: 'Request', model: Request.Model } }
+  | { type: 'Ready', screen: { type: 'Share', model: Share.Model } }
 
 type Model =
-  | PageError
-  | Initializing
-  | Initialized
+  | { type: 'Loading', linkId?: string, seed?: string }
+  | InitializedModel
+  | { type: 'Error', reason: 'AppError' | 'ServerError' | 'LinkMalformed' }
+  | { type: 'LinkNotFound' }
 
-function init(): [Model, cmd.Cmd<Msg>] {
-  const loc = window.location.pathname.split("/")
+function getLinkStatus(linkId: string): cmd.Cmd<Msg> {
 
-  switch (loc[1]) {
-    case 'send': {
-      const [sendFile, sendFileCmd] = SendFile.init
-
-      return [
-        { type: 'Initialized', router: { route: 'send', model: { type: 'SendFile', model: sendFile } } },
-        cmd.map<SendFile.Msg, Msg>(msg => ({ type: 'SendFileMsg', msg }))(sendFileCmd)
-      ]
-    }
-    case 'request': {
-      const [requestFile, requestFileCmd] = RequestFile.init
-
-      return [
-        { type: 'Initialized', router: { route: 'request', model: { type: 'RequestFile', model: requestFile } } },
-        cmd.map<RequestFile.Msg, Msg>(msg => ({ type: 'RequestFileMsg', msg }))(requestFileCmd)
-      ]
-    }
-
-    default: return [
-      { type: 'PageError', error: Opt.some('Unknown route') },
-      cmd.none
-    ]
+  type Resp = {
+    workflow: 'r',
+    stage: string,
+    key: string
+  } | {
+    workflow: 's'
   }
+  const schema =
+    t.union([
+      t.interface({
+        workflow: t.literal('r'),
+        stage: t.string,
+        key: t.string
+      }),
+      t.interface({
+        workflow: t.literal('s'),
+      })
+    ])
+
+  const req = {
+    ...http.get(`${endpoint}/link-status/${linkId}`, fromCodec(schema)),
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  return http.send<Resp, Msg>(result =>
+    pipe(
+      result,
+      E.fold<http.HttpError, Resp, Msg>(
+        e => {
+          if (e._tag === 'BadUrl')
+            return ({ type: 'FailBadLink' })
+          else
+            return ({ type: 'FailGetStatus' })
+        },
+        resp => {
+          if (resp.workflow === 'r')
+            return ({ type: 'GotStatus', status: { workflow: 'ReqFile', stage: resp.stage, pk: resp.key } })
+          else
+            return ({ type: 'GotStatus', status: { workflow: 'ShareFile' } })
+        })
+    )
+  )(req)
 }
 
-const update = (msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] => {
-  switch (msg.type) {
-    case 'SendFileMsg': {
-      if (model.type != 'Initialized' || model.router.route != 'send') throw new Error("Wrong state")
+const init: () => [Model, cmd.Cmd<Msg>] = () => {
+  const [linkIdWithHash, seed] = window.location.hash.split(';')
+  const linkId = linkIdWithHash.substr(1)
 
-      const [sendFile, sendFileCmd] = SendFile.update(msg.msg, model.router.model.model)
+  if (linkId != null && seed != null) {
+    return [
+      { type: 'Loading', linkId, seed },
+      getLinkStatus(linkId)
+    ]
+  }
+
+  // const [requestModel, requestCmd] = Request.init('0')
+
+  // return [
+  //   { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+  //   cmd.batch([
+  //     cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+  //   ])
+  // ]
+  const [shareModel, shareCmd] = Share.init({ type: '0' })
+
+  return [
+    { type: 'Ready', screen: { type: 'Share', model: shareModel } },
+    cmd.batch([
+      cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
+    ])
+  ]
+}
+
+function update(msg: Msg, model: Model): [Model, cmd.Cmd<Msg>] {
+  switch (msg.type) {
+    case 'FailBadLink': {
       return [
-        { ...model, router: { route: 'send', model: { ...model.router.model, model: sendFile } } },
-        cmd.map<SendFile.Msg, Msg>(msg => ({ type: 'SendFileMsg', msg }))(sendFileCmd)
+        { type: 'LinkNotFound' },
+        cmd.none
       ]
     }
-    case 'RequestFileMsg': {
-      if (model.type != 'Initialized' || model.router.route != 'request') throw new Error("Wrong state")
-
-      const [requestFile, requestFileCmd] = RequestFile.update(msg.msg, model.router.model.model)
+    case 'FailGetStatus': {
       return [
-        { ...model, router: { route: 'request', model: { ...model.router.model, model: requestFile } } },
-        cmd.map<RequestFile.Msg, Msg>(msg => ({ type: 'RequestFileMsg', msg }))(requestFileCmd)
+        { type: 'Error', reason: 'ServerError' },
+        cmd.none
+      ]
+    }
+    case 'GotStatus': {
+      if (model.type != 'Loading')
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
+
+      switch (msg.status.workflow) {
+        case 'ReqFile': {
+          const [requestModel, requestCmd] = Request.init(msg.status.stage, model.linkId, msg.status.pk, model.seed)
+
+          return [
+            { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+            cmd.batch([
+              cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+            ])
+          ]
+        }
+        case 'ShareFile': {
+          const { linkId, seed } = model
+          if (!linkId || !seed) {
+            return [{ type: 'Error', reason: 'AppError' }, cmd.none]
+          }
+
+          let arrSeed
+          try {
+            arrSeed = b642arr(seed)
+          } catch {
+            return [{ type: 'Error', reason: 'LinkMalformed' }, cmd.none]
+          }
+
+          const [shareModel, shareCmd] = Share.init({ type: '1', linkId, seed: arrSeed })
+
+          return [
+            { type: 'Ready', screen: { type: 'Share', model: shareModel } },
+            cmd.batch([
+              cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
+            ])
+          ]
+        }
+      }
+    }
+    case 'RequestMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'Request')
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
+
+
+      if ((
+        msg.msg.type === 'GetLinkMsg' || msg.msg.type === 'ExchangeLinkMsg')
+        && msg.msg.msg.type === 'LeftPanelMsg'
+        && msg.msg.msg.msg.type === 'SwitchToShare'
+      ) {
+        const [shareModel, shareCmd] = Share.init({ type: '0' })
+
+        return [
+          { type: 'Ready', screen: { type: 'Share', model: shareModel } },
+          cmd.batch([
+            cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
+          ])
+        ]
+      }
+
+      const [requestModel, requestCmd] = Request.update(msg.msg, model.screen.model)
+
+      return [
+        { ...model, screen: { ...model.screen, model: requestModel } },
+        cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+      ]
+    }
+    case 'ShareMsg': {
+      if (model.type != 'Ready' || model.screen.type != 'Share')
+        return [{ type: 'Error', reason: 'AppError' }, cmd.none]
+
+      if (msg.msg.type === 'UploadFilesMsg' && msg.msg.msg.type === 'LeftPanelMsg' && msg.msg.msg.msg.type === 'SwitchToRequest') {
+        const [requestModel, requestCmd] = Request.init('0')
+
+        return [
+          { type: 'Ready', screen: { type: 'Request', model: requestModel } },
+          cmd.batch([
+            cmd.map<Request.Msg, Msg>(msg => ({ type: 'RequestMsg', msg }))(requestCmd)
+          ])
+        ]
+      }
+
+      const [shareModel, shareCmd] = Share.update(msg.msg, model.screen.model)
+
+      return [
+        { ...model, screen: { ...model.screen, model: shareModel } },
+        cmd.map<Share.Msg, Msg>(msg => ({ type: 'ShareMsg', msg }))(shareCmd)
       ]
     }
   }
 }
 
 function view(model: Model): Html<Msg> {
+
   return dispatch => {
 
-    const renderError = (error: Opt.Option<string>) =>
-      <div className="holder">
-        <div className="holder-section">
-          <div className="container">
-            <div className="header-wrap">
-              <div className="row">
-                <div className="col-lg-10 col-md-6 offset-lg-1 offset-md-3 text-center">
-                  <div className="header-logo ">
-                    <a href="/"><img src={logo} className="img-fluid" /></a>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="alert alert-danger" role="alert" style={{ marginTop: '20px', textAlign: 'center' }
-            }>
-              {
-                pipe(
-                  error,
-                  Opt.fold(
-                    () => "Error, refresh page",
-                    msg => msg
-                  )
-                )
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-
-    const renderInitializing = () =>
-      <div>
-        <div style={{ textAlign: 'center', margin: '80px' }}>
-          <div className="spinner-grow" role="status" />
-        </div>
-      </div>
-
-    function render() {
-      switch (model.type) {
-        case 'PageError': return renderError(model.error)
-        case 'Initializing': return renderInitializing()
-        case 'Initialized': {
-
-          switch (model.router.route) {
-            case 'send': return SendFile.view(model.router.model.model)(msg => dispatch({ type: 'SendFileMsg', msg }))
-            case 'request': return RequestFile.view(model.router.model.model)(msg => dispatch({ type: 'RequestFileMsg', msg }))
-          }
-        }
+    function renderScreen(model: InitializedModel) {
+      switch (model.screen.type) {
+        case 'Request': return Request.view(model.screen.model)(msg => dispatch({ type: 'RequestMsg', msg }))
+        case 'Share': return Share.view(model.screen.model)(msg => dispatch({ type: 'ShareMsg', msg }))
       }
     }
 
-    return render()
+    switch (model.type) {
+      case 'Loading': return LoadingScreen.view()(dispatch)
+      case 'Ready': return renderScreen(model)
+      case 'Error': return ErrorScreen.view(model.reason)(dispatch)
+      case 'LinkNotFound': return ErrorScreen.view('LinkNotFound')(dispatch)
+    }
   }
+
 }
 
-export { init, update, view }
+export { Model, Msg, init, update, view }

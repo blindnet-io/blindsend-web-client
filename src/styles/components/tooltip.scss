@@ -1,0 +1,249 @@
+.tooltip__wrap {
+  @include mq($lg, min) {
+    flex: 0 0 31.55%;
+    max-width: 31.55%;
+  }
+
+  @include mq($lg) {
+    margin: 0 0 24px;
+  }
+
+  .swiper-container-horizontal>.swiper-pagination-bullets,
+  .swiper-pagination-custom,
+  .swiper-pagination-fraction {
+    bottom: -3px;
+  }
+
+  .swiper-pagination-bullet {
+    width: 12px;
+    height: 12px;
+    background: $white;
+  }
+
+  .swiper-pagination-bullet-active {
+    background: $white;
+  }
+}
+
+.tooltip {
+  background: $slight-black;
+  height: 100%;
+  border-radius: 16px;
+  padding: 35px;
+  display: flex;
+  flex-direction: column;
+
+  @include mq($lap-large) {
+    padding: 15px;
+  }
+
+  @include mq($lg) {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+}
+
+.tooltip__warning-wrap {
+  background: $almost-black;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.07);
+  border-radius: 8px;
+  padding: 35px 54px;
+  margin-bottom: 35px;
+  font-size: 22.5px;
+  text-align: center;
+  border: 1.5px solid $grey-2;
+  letter-spacing: -0.25px;
+  line-height: 1.45;
+
+  @include mq($lap-large) {
+    font-size: 20px;
+    margin-bottom: 15px;
+    padding: 15px;
+  }
+
+  @include mq($lap-med) {
+    font-size: 18px;
+  }
+
+  @include mq($lg) {
+    order: 2;
+    margin: 24px 0 0;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+  }
+}
+
+.tooltip__inner {
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  border-radius: 22px;
+  padding: 40px 35px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+
+  @include mq($lap-large) {
+    padding: 15px 15px 5px;
+  }
+
+  &.tooltip__inner--empty {
+    background: #1a1b1c;
+  }
+
+  &.tooltip__inner--default {
+    background-image: url('../images/default-tooltip.png');
+    background-repeat: no-repeat;
+    background-size: cover;
+    border: 2px solid $blue;
+  }
+
+  &.tooltip__inner--weak {
+    background-image: url('../images/weak-tooltip.png');
+    background-repeat: no-repeat;
+    background-size: cover;
+    border: 2px solid $orange;
+  }
+
+  &.tooltip__inner--strong {
+    background-image: url('../images/strong-tooltip.png');
+    background-repeat: no-repeat;
+    background-size: cover;
+    border: 2px solid $green;
+  }
+
+  &.tooltip__inner--pink {
+    background-image: url('../images/pink-tooltip.png');
+    background-repeat: no-repeat;
+    background-size: cover;
+    border: 2px solid $purple-2;
+  }
+}
+
+.tooltip__img {
+  display: flex;
+
+  img {
+    @include mq($lap-large) {
+      width: 80px;
+      height: 80px;
+    }
+
+    @include mq($lap-med) {
+      width: 70px;
+      height: 70px;
+    }
+
+    @include mq($lap-small) {
+      width: 65px;
+      height: 65px;
+    }
+
+    @include mq($md) {
+      width: 60px;
+      height: 60px;
+    }
+
+    @include mq($sm) {
+      width: 40px;
+      height: 40px;
+    }
+  }
+}
+
+.tooltip__title {
+  margin: 5px 0 16px;
+  text-transform: uppercase;
+
+  @include mq($lap-small) {
+    margin-bottom: 10px;
+  }
+}
+
+.tooltip__content {
+  .tooltip__slide:last-child {
+    margin-bottom: 0;
+  }
+
+  @include mq($lg, min) {
+    flex-direction: column;
+  }
+}
+
+.tooltip__slide {
+  margin-bottom: 35px;
+
+  .tooltip__content-text:last-child {
+    margin-bottom: 0;
+  }
+
+  @include mq($lap-large) {
+    margin-bottom: 15px;
+  }
+
+  @include mq($lg) {
+    margin-bottom: 0;
+  }
+
+  @include mq($lg, min) {
+    flex-shrink: 1;
+  }
+}
+
+.tooltip__content-container {
+  width: 100%;
+  padding: 0 13px 15px;
+
+  @include mq($lg) {
+    padding: 0 0 15px;
+  }
+
+  &.swiper-container-initialized {
+    @include mq($lg) {
+      padding: 0 0 15px;
+    }
+  }
+}
+
+.tooltip__content-text {
+  font-size: 22.5px;
+  margin-bottom: 35px;
+  line-height: 1.5;
+
+  @include mq($lap-large) {
+    font-size: 20px;
+    margin-bottom: 15px;
+  }
+
+  @include mq($lap-med) {
+    font-size: 18px;
+  }
+
+  @include mq($md) {
+    font-size: 16px;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+  }
+}
+
+.tooltip__pagination {
+  position: relative;
+
+  @include mq($lg, min) {
+    display: none;
+  }
+}

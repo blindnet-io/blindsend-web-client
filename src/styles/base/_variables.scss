@@ -1,0 +1,83 @@
+// COLORS
+$white: #fff;
+$black: #272727;
+
+$link-color: $black;
+$link-focus-color: $black;
+$link-hover-color: $white;
+
+$selection-text-color: $white;
+$selection-background-color: $black;
+
+$dark-grey: #292b2e;
+$slight-black: #1a1b1c;
+$grey: #6d7680;
+$green: #53c69d;
+$purple: #9474e6;
+$darker-grey: #5f676f;
+$dark-green: #448ca4;
+$dark-purple: #7148a6;
+$light-grey: #a7a7a7;
+$orange: #ff8978;
+$almost-black: #292b2e;
+$almost-grey: #3c3f43;
+$grey-2: #6a737c;
+$blue: #7399fd;
+$purple-2: #a261f5;
+$black-2: #333639;
+$grey-3: #616971;
+$lightest-grey: #d6d7d6;
+
+// FONTS
+$font-main: NeueHaasDisplay-Roman;
+$font-main-med: NeueHaasDisplay-Mediu;
+$font-main-bold: NeueHaasDisplay-Bold;
+
+// Transitions
+$dur: 350ms;
+$ease: ease;
+
+// EASINGS
+
+$speed: 0.3s;
+$bounce: cubic-bezier(0.17, 0.67, 0.3, 1.33);
+$Power1EaseOut: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+$Power2EaseOut: cubic-bezier(0.215, 0.61, 0.355, 1);
+$Power3EaseOut: cubic-bezier(0.165, 0.84, 0.44, 1);
+$Power4EaseOut: cubic-bezier(0.23, 1, 0.32, 1);
+$Power1EaseIn: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+$Power2EaseIn: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+$Power3EaseIn: cubic-bezier(0.895, 0.03, 0.685, 0.22);
+$Power4EaseIn: cubic-bezier(0.755, 0.05, 0.855, 0.06);
+$ExpoEaseOut: cubic-bezier(0.19, 1, 0.22, 1);
+$ExpoEaseIn: cubic-bezier(0.95, 0.05, 0.795, 0.035);
+$ExpoEaseInOut: cubic-bezier(1, 0, 0, 1);
+$SineEaseOut: cubic-bezier(0.39, 0.575, 0.565, 1);
+$SineEaseIn: cubic-bezier(0.47, 0, 0.745, 0.715);
+$Power1EaseInOut: cubic-bezier(0.455, 0.03, 0.515, 0.955);
+$Power2EaseInOut: cubic-bezier(0.645, 0.045, 0.355, 1);
+$Power3EaseInOut: cubic-bezier(0.77, 0, 0.175, 1);
+$Power4EaseInOut: cubic-bezier(0.86, 0, 0.07, 1);
+$SlowEaseOut: cubic-bezier(0.04, 1.15, 0.4, 0.99);
+$easing: $Power2EaseOut;
+
+// BREAKPOINTS
+// $tiny: 500;
+// $small: 700;
+// $medium: 1000;
+// $large: 1200;
+// $big: 1400;
+// $huge: 1600;
+// $enormous: 1800;
+// $gigantic: 2000;
+// $colossal: 2400;
+
+// Bootstrap Breakpoints
+$sm: 576;
+$md: 767;
+$lg: 1099;
+$xl: 1199;
+$lap-small: 1250;
+$lap-med: 1350;
+$lap-large: 1650;
+$xxl: 1920;

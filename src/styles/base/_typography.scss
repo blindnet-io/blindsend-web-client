@@ -1,0 +1,125 @@
+/*--------------------------------------------------------------
+## Typography
+--------------------------------------------------------------*/
+body,
+button,
+input,
+select,
+optgroup,
+textarea {
+  color: $white;
+  font-family: $font-main;
+  font-size: 16px;
+  line-height: 1.35;
+
+  @include mq($lg) {
+    font-size: 15px;
+  }
+
+  @include mq($sm) {
+    font-size: 14px;
+  }
+}
+
+blockquote {
+  margin: 0 25px;
+}
+
+pre {
+  background: #ccc;
+  max-width: 100%;
+  overflow: auto;
+  padding: 1.6em;
+}
+
+a {
+  color: $white;
+}
+
+b {
+  font-weight: bold;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  margin: 0;
+}
+
+.page-title {
+  font-family: $font-main-bold;
+  font-weight: 700;
+  font-size: 48px;
+  color: $white;
+  margin: 13px 0;
+  letter-spacing: -0.55px;
+
+  @include mq(1499) {
+    font-size: 42px;
+  }
+
+  @include mq($xl) {
+    font-size: 35px;
+  }
+
+  @include mq($lg) {
+    font-size: 30px;
+  }
+
+  @include mq($md) {
+    font-size: 25px;
+  }
+}
+
+.section-title {
+  font-family: $font-main-bold;
+  font-weight: 700;
+  font-size: 48px;
+  color: $white;
+  letter-spacing: -0.6px;
+
+  @include mq(1700) {
+    font-size: 40px;
+  }
+
+  @include mq($lap-large) {
+    font-size: 30px;
+  }
+
+  // @include mq($lg) {
+  //   font-size: 30px;
+  // }
+  @include mq($md) {
+    font-size: 28px;
+  }
+
+  @include mq($sm) {
+    font-size: 24px;
+  }
+}
+
+.page-text {
+  letter-spacing: -0.18px;
+  margin: 22px 0;
+  line-height: 1.5;
+
+  a {
+    color: $white;
+  }
+}
+
+.page-link {
+  color: $white;
+}
+
+// Icon font
+[class*='font-'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $black;
+  font-size: 30px;
+  line-height: 1;
+}
