@@ -78,7 +78,7 @@ module.exports = merge(common, {
       ],
     }),
     new webpack.DefinePlugin({
-      HOST: null,
+      HOST: JSON.stringify('https://api.blindsend.io'),
       MITM: JSON.stringify('mitm/mitm.html'),
       VERSION: JSON.stringify(require("./package.json").version)
     }),

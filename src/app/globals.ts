@@ -1,4 +1,6 @@
-export const endpoint = (HOST != null) ? `${HOST}/api` : '/api'
+const apiVersion = VERSION.split('.').slice(0, 2).join('.')
+
+export const endpoint = (HOST != null) ? `${HOST}/v${apiVersion}` : `/v${apiVersion}`
 
 export const encryptionChunkSize = 131072
 
